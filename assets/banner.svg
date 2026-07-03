@@ -1,0 +1,89 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#050816"/>
+      <stop offset="0.48" stop-color="#081A34"/>
+      <stop offset="1" stop-color="#120824"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(230 110) rotate(35) scale(360 220)">
+      <stop stop-color="#33D6FF" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#33D6FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(940 280) rotate(145) scale(380 240)">
+      <stop stop-color="#A855F7" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#A855F7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="title" x1="242" y1="126" x2="821" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0F7FF"/>
+      <stop offset="0.46" stop-color="#6EE7F9"/>
+      <stop offset="1" stop-color="#C084FC"/>
+    </linearGradient>
+    <linearGradient id="line" x1="150" y1="315" x2="1050" y2="315" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE" stop-opacity="0"/>
+      <stop offset="0.18" stop-color="#22D3EE"/>
+      <stop offset="0.5" stop-color="#A78BFA"/>
+      <stop offset="0.82" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#34D399" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.25 0 0 0 0 0.85 0 0 0 0 1 0 0 0 0.65 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="textShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#22D3EE" flood-opacity="0.35"/>
+    </filter>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" stroke="#8BD9FF" stroke-opacity="0.09" stroke-width="1"/>
+    </pattern>
+    <clipPath id="round">
+      <rect width="1200" height="420" rx="36"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect width="1200" height="420" fill="url(#bg)"/>
+    <rect width="1200" height="420" fill="url(#grid)"/>
+    <rect width="1200" height="420" fill="url(#glow1)"/>
+    <rect width="1200" height="420" fill="url(#glow2)"/>
+
+    <path d="M-60 354C145 260 266 367 454 276C640 186 760 75 1280 120" stroke="#22D3EE" stroke-opacity="0.2" stroke-width="2"/>
+    <path d="M-80 92C170 156 286 52 474 126C682 208 777 356 1280 305" stroke="#A855F7" stroke-opacity="0.22" stroke-width="2"/>
+    <path d="M118 324H1082" stroke="url(#line)" stroke-width="3" stroke-linecap="round"/>
+
+    <g opacity="0.92" filter="url(#softGlow)">
+      <circle cx="940" cy="133" r="62" stroke="#67E8F9" stroke-width="2"/>
+      <circle cx="940" cy="133" r="34" stroke="#C084FC" stroke-width="2"/>
+      <path d="M904 133H976M940 97V169" stroke="#B9F2FF" stroke-width="2" stroke-linecap="round"/>
+      <path d="M1008 180L1054 226M1017 122L1086 88M868 182L809 238" stroke="#67E8F9" stroke-opacity="0.65" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="1054" cy="226" r="6" fill="#34D399"/>
+      <circle cx="1086" cy="88" r="5" fill="#22D3EE"/>
+      <circle cx="809" cy="238" r="5" fill="#A78BFA"/>
+    </g>
+
+    <g filter="url(#textShadow)">
+      <text x="90" y="144" fill="#BEEBFF" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="26" font-weight="700" letter-spacing="5">PYTHON AUTOMATION TOOLKIT</text>
+      <text x="88" y="226" fill="url(#title)" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="88" font-weight="900" letter-spacing="-3">Grok Register</text>
+      <text x="94" y="278" fill="#DCEBFF" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="28" font-weight="500">GUI / CLI · Temp Mail · Browser Flow · Token Pool</text>
+    </g>
+
+    <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="18" font-weight="700">
+      <rect x="96" y="344" width="122" height="42" rx="21" fill="#0B2841" stroke="#29D3FF" stroke-opacity="0.48"/>
+      <text x="126" y="371" fill="#BFF6FF">GUI</text>
+      <rect x="234" y="344" width="110" height="42" rx="21" fill="#10223F" stroke="#8B5CF6" stroke-opacity="0.5"/>
+      <text x="267" y="371" fill="#DDD6FE">CLI</text>
+      <rect x="360" y="344" width="164" height="42" rx="21" fill="#102B2A" stroke="#34D399" stroke-opacity="0.5"/>
+      <text x="391" y="371" fill="#CFFFE8">Temp Mail</text>
+      <rect x="540" y="344" width="178" height="42" rx="21" fill="#27183B" stroke="#C084FC" stroke-opacity="0.5"/>
+      <text x="568" y="371" fill="#F0D9FF">grok2api</text>
+      <rect x="734" y="344" width="190" height="42" rx="21" fill="#2C2230" stroke="#F97316" stroke-opacity="0.5"/>
+      <text x="762" y="371" fill="#FFE1C2">Chrome Flow</text>
+    </g>
+
+    <path d="M69 54C69 39.6406 80.6406 28 95 28H1105C1119.36 28 1131 39.6406 1131 54V366C1131 380.359 1119.36 392 1105 392H95C80.6406 392 69 380.359 69 366V54Z" stroke="white" stroke-opacity="0.11" stroke-width="2"/>
+  </g>
+</svg>
