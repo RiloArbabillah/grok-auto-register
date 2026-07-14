@@ -39,19 +39,19 @@ def json_or_text(resp: requests.Response) -> Tuple[Optional[Dict[str, Any]], str
 
 
 def generate_username(length: int = 10) -> str:
-    """生成 cloudflare_temp_email admin API 需要的随机邮箱名称。"""
+    """Generate a random email username for the cloudflare_temp_email admin API."""
     chars = string.ascii_lowercase + string.digits
     return "".join(secrets.choice(chars) for _ in range(length))
 
 
 def normalize_path(path: str, default_path: str) -> str:
-    """标准化 API 路径，避免漏写开头斜杠。"""
+    """Normalize an API path and add the leading slash when omitted."""
     raw = (path or default_path).strip() or default_path
     return raw if raw.startswith("/") else f"/{raw}"
 
 
 def build_auth_headers(auth_mode: str, api_key: str, content_type: bool = False) -> Dict[str, str]:
-    """按调试参数构造 Cloudflare 临时邮箱接口鉴权请求头。"""
+    """Build Cloudflare temporary email auth headers from debug options."""
     headers = {"Content-Type": "application/json"} if content_type else {}
     key = (api_key or "").strip()
     mode = (auth_mode or "none").strip().lower()
@@ -74,7 +74,7 @@ def create_address(
     domain: str = "",
     name: str = "",
 ) -> Tuple[str, str]:
-    """创建 Cloudflare 临时邮箱地址，支持匿名 API 和 admin API。"""
+    """Create a Cloudflare temporary email address via anonymous or admin APIs."""
     path = normalize_path(create_path, "/api/new_address")
     is_admin_create = path.rstrip("/").lower() == "/admin/new_address"
     if is_admin_create:
@@ -99,11 +99,11 @@ def create_address(
     resp.raise_for_status()
     data, raw = json_or_text(resp)
     if not data:
-        raise RuntimeError(f"{path} 非JSON: {raw}")
+        raise RuntimeError(f"{path} returned non-JSON: {raw}")
     address = str(data.get("address", "")).strip()
     jwt = str(data.get("jwt", "")).strip()
     if not address or not jwt:
-        raise RuntimeError(f"{path} 缺少 address/jwt: {data}")
+        raise RuntimeError(f"{path} missing address/jwt: {data}")
     return address, jwt
 
 

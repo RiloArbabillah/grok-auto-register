@@ -1,8 +1,8 @@
 ﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Grok 注册机 - TTK GUI 版本
-整合 DrissionPage_example.py, openai_register.py, batch_open_nsfw.py
+Grok Register - TTK GUI Version
+Integrates DrissionPage_example.py, openai_register.py, and batch_open_nsfw.py
 """
 
 import tkinter as tk
@@ -113,11 +113,11 @@ def get_log_level():
 
 
 def message_log_rank(message):
-    """根据消息内容推断日志级别。"""
+    """Infer the log level from message content."""
     text = str(message or "")
     if "[Debug]" in text:
         return _LOG_LEVEL_RANK["debug"]
-    # quiet 仅保留关键进度/结果/警告
+    # quiet keeps only key progress, results, and warnings
     if text.startswith("--- "):
         return _LOG_LEVEL_RANK["info"]
     quiet_prefixes = ("[+]", "[-]", "[!]")
@@ -125,7 +125,7 @@ def message_log_rank(message):
         f" {p}" in text[:12] for p in quiet_prefixes
     ):
         return _LOG_LEVEL_RANK["quiet"]
-    if "[*] 速度统计" in text or text.lstrip().startswith("[*] 速度统计"):
+    if "[*] Speed stats" in text or text.lstrip().startswith("[*] Speed stats"):
         return _LOG_LEVEL_RANK["quiet"]
     if any(
         key in text
@@ -136,17 +136,17 @@ def message_log_rank(message):
             "[*] 4.",
             "[*] 5.",
             "[*] 6.",
-            "[*] 终端模式",
-            "[*] 配置已保存",
-            "[*] 任务结束",
-            "[*] 注册成功",
-            "[+] 注册成功",
+            "[*] CLI mode",
+            "[*] Config saved",
+            "[*] Task finished",
+            "[*] Registration succeeded",
+            "[+] Registration succeeded",
             "Worker-",
-            "浏览器已启动",
-            "开始执行",
-            "成功账号将实时保存",
-            "按 Ctrl+C",
-            "Cloudflare 拦截",
+            "Browser started",
+            "Starting run",
+            "Successful accounts will be saved in real time",
+            "Press Ctrl+C",
+            "Cloudflare block",
         )
     ):
         return _LOG_LEVEL_RANK["quiet"]
@@ -171,10 +171,10 @@ def emit_log(log_callback, message, *, level=None):
 
 
 class RateMeter:
-    """按固定间隔汇总创建速度（全局一条，避免每 worker 各打一条）。"""
+    """Aggregate creation speed at a fixed interval, globally instead of once per worker."""
 
     def __init__(self, interval_sec=60):
-        # 允许测试用更短间隔；生产默认 60s
+        # Allow shorter intervals in tests; production defaults to 60s
         self.interval_sec = max(float(interval_sec or 60), 1.0)
         self.t0 = time.time()
         self.last_tick = self.t0
@@ -190,7 +190,7 @@ class RateMeter:
             success = int(success or 0)
             fail = int(fail or 0)
             delta = max(success - self.last_success, 0)
-            # 正常按实际窗口折算；极短窗口（force 收尾/刚启动）用 interval 估，避免天文数字
+            # Normally use the actual window; for very short windows, estimate with interval to avoid extreme rates
             if elapsed >= 1.0:
                 window = elapsed
             else:
@@ -198,7 +198,7 @@ class RateMeter:
             rate = delta * 60.0 / window
             total_sec = max(now - self.t0, 0.0)
             total_min = total_sec / 60.0
-            # 运行不足 1s 时平均速度与窗口速率对齐，避免 540/min 这类瞬时噪声
+            # Before 1s runtime, align average speed with window rate to avoid instant noise
             if total_sec >= 1.0:
                 avg = success * 60.0 / total_sec
             else:
@@ -206,8 +206,8 @@ class RateMeter:
             self.last_tick = now
             self.last_success = success
             return (
-                f"[*] 速度统计: 成功 {rate:.0f}/min | 本分钟成功 {delta} "
-                f"| 累计成功 {success} | 累计失败 {fail} | 运行 {total_min:.1f}min | 平均 {avg:.1f}/min"
+                f"[*] Speed stats: success {rate:.0f}/min | success this minute {delta} "
+                f"| total success {success} | total failed {fail} | runtime {total_min:.1f}min | average {avg:.1f}/min"
             )
 
     def maybe_log(self, log_callback, success, fail=0, force=False):
@@ -217,7 +217,7 @@ class RateMeter:
 
 
 def start_speed_logger(get_counts, log_callback, stop_event, interval_sec=60):
-    """后台每 interval 打印一次全局速度；stop 后打印最终摘要。"""
+    """Print global speed once per interval in the background, then print a final summary after stop."""
 
     meter = RateMeter(interval_sec=interval_sec)
 
@@ -258,7 +258,7 @@ def save_config():
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
     except Exception as e:
-        print(f"保存配置失败: {e}")
+        print(f"Failed to save config: {e}")
 
 
 def ensure_stable_python_runtime():
@@ -279,7 +279,7 @@ def ensure_stable_python_runtime():
             return
 
         print(
-            f"[*] 检测到 Python {sys.version.split()[0]}，自动切换到更稳定的解释器: {candidate}"
+            f"[*] Detected Python {sys.version.split()[0]}, switching automatically to a more stable interpreter: {candidate}"
         )
         env = os.environ.copy()
         env["DPE_REEXEC_DONE"] = "1"
@@ -289,7 +289,7 @@ def ensure_stable_python_runtime():
 def warn_runtime_compatibility():
     if sys.version_info >= (3, 14):
         print(
-            "[提示] 当前 Python 为 3.14+；若出现 Mail.tm TLS 异常，建议改用 Python 3.12 或 3.13。"
+            "[Hint] Current Python is 3.14+; if Mail.tm TLS errors occur, use Python 3.12 or 3.13."
         )
 
 
@@ -360,7 +360,7 @@ def cloudflare_apply_auth_params(params=None):
 
 
 def cloudflare_next_default_domain():
-    """按配置轮换选择 Cloudflare 临时邮箱域名。"""
+    """Rotate Cloudflare temporary email domains according to config."""
     global _cf_domain_index
     domains = [x.strip() for x in str(config.get("defaultDomains", "") or "").split(",") if x.strip()]
     if not domains:
@@ -372,7 +372,7 @@ def cloudflare_next_default_domain():
 
 
 def cloudflare_is_admin_create_path(path):
-    """判断当前创建邮箱路径是否为 cloudflare_temp_email 管理员创建接口。"""
+    """Return whether the current create-address path is the cloudflare_temp_email admin endpoint."""
     return str(path or "").rstrip("/").lower() == "/admin/new_address"
 
 
@@ -396,7 +396,7 @@ def _pick_list_payload(data):
 
 
 def cloudflare_create_temp_address(api_base):
-    """适配 cloudflare_temp_email 新建地址接口并兼容 admin 创建模式。"""
+    """Adapt the cloudflare_temp_email new-address endpoint and support admin create mode."""
     path = get_cloudflare_path("cloudflare_path_accounts", "/api/new_address")
     url = f"{api_base}{path}"
     domain = cloudflare_next_default_domain()
@@ -416,11 +416,11 @@ def cloudflare_create_temp_address(api_base):
     try:
         data = resp.json()
     except Exception:
-        raise Exception(f"Cloudflare {path} 返回非JSON: {resp.text[:300]}")
+        raise Exception(f"Cloudflare {path} returned non-JSON: {resp.text[:300]}")
     address = data.get("address")
     jwt = data.get("jwt")
     if not address or not jwt:
-        raise Exception(f"Cloudflare {path} 缺少 address/jwt: {data}")
+        raise Exception(f"Cloudflare {path} missing address/jwt: {data}")
     return address, jwt
 
 
@@ -477,7 +477,7 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
                 existing.add(_normalize_sso_token(item.get("token", "")))
         if token in existing:
             if log_callback:
-                log_callback(f"[*] grok2api 本地池已存在 token: {pool_name}")
+                log_callback(f"[*] grok2api local pool already has token: {pool_name}")
             return True
         entry = {"token": token, "tags": ["auto-register"], "note": email}
         pool.append(entry)
@@ -485,18 +485,18 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
         with open(token_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     if log_callback:
-        log_callback(f"[+] 已写入 grok2api 本地池: {pool_name} ({token_file})")
+        log_callback(f"[+] Wrote to grok2api local pool: {pool_name} ({token_file})")
     return True
 
 
 def get_grok2api_remote_api_bases(base):
-    """生成 grok2api 管理 API 候选根路径。
+    """Generate candidate grok2api management API base paths.
 
-    参数:
-      - base str: 用户配置的 grok2api 远端地址
+    Args:
+      - base str: user-configured remote grok2api URL
 
-    返回:
-      - list[str]: 依次尝试的管理 API 根路径
+    Returns:
+      - list[str]: management API base paths in attempt order
     """
     normalized = str(base or "").strip().rstrip("/")
     if not normalized:
@@ -527,7 +527,7 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
     pool_name = str(config.get("grok2api_pool_name", "ssoBasic") or "ssoBasic").strip() or "ssoBasic"
     if not base or not app_key:
         if log_callback:
-            log_callback("[Debug] grok2api 远端未配置 base/app_key，跳过")
+            log_callback("[Debug] grok2api remote base/app_key is not configured; skipping")
         return False
     headers = {"Content-Type": "application/json"}
     query = {"app_key": app_key}
@@ -535,7 +535,7 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
     remote_pool = pool_map.get(pool_name, "basic")
     api_bases = get_grok2api_remote_api_bases(base)
     add_errors = []
-    # 优先使用 add 接口，避免全量覆盖远端池
+    # Prefer the add API to avoid overwriting the entire remote pool
     add_payload = {"tokens": [token], "pool": remote_pool, "tags": ["auto-register"]}
     for api_base in api_bases:
         endpoint = f"{api_base}/tokens/add"
@@ -550,14 +550,14 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
             )
             resp_add.raise_for_status()
             if log_callback:
-                log_callback(f"[+] 已写入 grok2api 远端池: {pool_name} ({endpoint})")
+                log_callback(f"[+] Wrote to grok2api remote pool: {pool_name} ({endpoint})")
             return True
         except Exception as add_exc:
             add_errors.append(f"{endpoint}: {add_exc}")
     if log_callback:
-        log_callback(f"[Debug] /tokens/add 写入失败，尝试 /tokens 全量模式: {'; '.join(add_errors)}")
+        log_callback(f"[Debug] /tokens/add failed; trying /tokens full-save mode: {'; '.join(add_errors)}")
 
-    # 兜底：旧版全量保存接口
+    # Fallback: legacy full-save API
     current = {}
     fallback_base = api_bases[0] if api_bases else base
     for api_base in api_bases or [base]:
@@ -594,11 +594,11 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
             resp2 = http_post(f"{api_base}/tokens", headers=headers, params=query, json=current, timeout=30, proxies={})
             resp2.raise_for_status()
             if log_callback:
-                log_callback(f"[+] 已写入 grok2api 远端池: {pool_name} ({api_base}/tokens)")
+                log_callback(f"[+] Wrote to grok2api remote pool: {pool_name} ({api_base}/tokens)")
             return True
         except Exception as save_exc:
             save_errors.append(f"{api_base}/tokens: {save_exc}")
-    raise RuntimeError(f"grok2api 远端 /tokens 全量模式写入失败: {'; '.join(save_errors)}")
+    raise RuntimeError(f"grok2api remote /tokens full-save mode Failed: {'; '.join(save_errors)}")
 
 
 def add_token_to_grok2api_pools(raw_token, email="", log_callback=None):
@@ -607,13 +607,13 @@ def add_token_to_grok2api_pools(raw_token, email="", log_callback=None):
             add_token_to_grok2api_local_pool(raw_token, email=email, log_callback=log_callback)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] 写入 grok2api 本地池失败: {exc}")
+                log_callback(f"[Debug] Failed to write to grok2api local pool: {exc}")
     if config.get("grok2api_auto_add_remote", False):
         try:
             add_token_to_grok2api_remote_pool(raw_token, email=email, log_callback=log_callback)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] 写入 grok2api 远端池失败: {exc}")
+                log_callback(f"[Debug] Failed to write to grok2api remote pool: {exc}")
 
 
 def add_token_to_token_only_file(raw_token, log_callback=None):
@@ -628,11 +628,11 @@ def add_token_to_token_only_file(raw_token, log_callback=None):
             with open(token_only_file, "a", encoding="utf-8") as f:
                 f.write(f"{token}\n")
         if log_callback:
-            log_callback(f"[+] 已写入 token 文件: {token_only_file}")
+            log_callback(f"[+] Wrote token file: {token_only_file}")
         return True
     except Exception as exc:
         if log_callback:
-            log_callback(f"[Debug] 写入 token 文件失败: {exc}")
+            log_callback(f"[Debug] Failed to write token file: {exc}")
         return False
 
 
@@ -659,18 +659,18 @@ def upload_to_cpa_server(local_path, log_callback=None):
         sftp.close()
         ssh.close()
         if log_callback:
-            log_callback(f"[cpa] 已上传到服务器: {host}:{remote_path}")
+            log_callback(f"[cpa] Uploaded to server: {host}:{remote_path}")
         return True
     except Exception as exc:
         if log_callback:
-            log_callback(f"[cpa] 上传到服务器失败: {exc}")
+            log_callback(f"[cpa] Upload to server Failed: {exc}")
         return False
 
 
 def export_cpa_xai_for_account(email, password, sso=None, log_callback=None, page=None):
     if not config.get("cpa_export_enabled", True):
         if log_callback:
-            log_callback("[cpa] CPA 导出已禁用，跳过")
+            log_callback("[cpa] CPA export disabled; skipping")
         return {"ok": False, "skipped": True, "reason": "disabled"}
     try:
         from cpa_export import export_cpa_xai_for_account as _export
@@ -683,19 +683,19 @@ def export_cpa_xai_for_account(email, password, sso=None, log_callback=None, pag
         )
     except Exception as exc:
         if log_callback:
-            log_callback(f"[cpa] CPA xAI 导出失败: {exc}")
+            log_callback(f"[cpa] CPA xAI export failed: {exc}")
         return {"ok": False, "error": str(exc)}
 
 
 def create_browser_options():
-    """创建尽量贴近真实浏览器的启动参数。
+    """Create browser launch options that stay close to a real browser.
 
-    TUN 系统代理时请保持 config.proxy 为空，让 Chromium 走系统网络栈。
-    不要默认 new_env / 强制 UA / 过多 flag，容易触发 Cloudflare「故障排除」。
+    When using a TUN system proxy, keep config.proxy empty so Chromium uses the system network stack.
+    Do not default to new_env, forced UA, or too many flags; they can trigger Cloudflare troubleshooting pages.
     """
     options = ChromiumOptions()
     options.set_timeouts(base=1)
-    # 并发时为每个 worker 分配独立资料目录，避免 cookie/会话互相污染
+    # Assign each concurrent worker an independent profile directory to avoid cookie/session contamination
     profile_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".browser_profiles")
     try:
         os.makedirs(profile_root, exist_ok=True)
@@ -707,21 +707,21 @@ def create_browser_options():
         options.set_user_data_path(profile_dir)
     except Exception:
         pass
-    # set_user_data_path 可能清掉 auto_port，必须放在后面重新启用
+    # set_user_data_path may clear auto_port, so re-enable it afterwards
     options.auto_port()
     for flag in (
         "--no-first-run",
         "--no-default-browser-check",
     ):
         options.set_argument(flag)
-    # 仅显式配置 proxy 时写入；TUN 模式保持空
+    # Set proxy only when explicitly configured; keep it empty for TUN mode
     proxy = str(config.get("proxy", "") or "").strip()
     if proxy:
         try:
             options.set_proxy(proxy)
         except Exception:
             options.set_argument(f"--proxy-server={proxy}")
-    # 默认使用浏览器真实 UA；仅当用户显式打开时才覆盖
+    # Use the browser real UA by default; override only when explicitly enabled
     if config.get("browser_use_custom_ua", False):
         ua = get_user_agent()
         if ua:
@@ -750,7 +750,7 @@ def http_get(url, **kwargs):
         return requests.get(url, **_build_request_kwargs(**kwargs))
     except Exception as exc:
         err = str(exc)
-        # 代理不可用时自动回退为直连，避免整个流程直接失败
+        # Fall back to direct connection when the proxy is unavailable, avoiding total flow failure
         if "127.0.0.1 port 7890" in err or "Could not connect to server" in err:
             retry_kwargs = dict(kwargs)
             retry_kwargs["proxies"] = {}
@@ -772,7 +772,7 @@ def http_post(url, **kwargs):
 
 def raise_if_cancelled(cancel_callback=None):
     if cancel_callback and cancel_callback():
-        raise RegistrationCancelled("用户停止注册")
+        raise RegistrationCancelled("User stopped registration")
 
 
 def sleep_with_cancel(seconds, cancel_callback=None):
@@ -887,7 +887,7 @@ def cloudflare_get_messages(api_base, token):
     try:
         data = resp.json()
     except Exception:
-        raise Exception(f"Cloudflare messages 返回非JSON: {resp.text[:300]}")
+        raise Exception(f"Cloudflare messages returned non-JSON: {resp.text[:300]}")
     return _pick_list_payload(data)
 
 
@@ -913,7 +913,7 @@ def cloudflare_get_message_detail(api_base, token, message_id):
         except Exception as exc:
             last_err = exc
             continue
-    raise Exception(f"Cloudflare 获取邮件详情失败: {last_err}")
+    raise Exception(f"Cloudflare failed to fetch message detail: {last_err}")
 
 
 YYDS_API_BASE = "https://maliapi.215.im/v1"
@@ -961,7 +961,7 @@ def yyds_create_account(address=None, domain=None, api_key=None, jwt=None):
     data = resp.json()
     if data.get("success"):
         return data.get("data", {})
-    raise Exception(f"YYDS 鍒涘缓閭澶辫触: {data}")
+    raise Exception(f"YYDS failed to create mailbox: {data}")
 
 
 def yyds_get_token(address, api_key=None, jwt=None):
@@ -979,7 +979,7 @@ def yyds_get_token(address, api_key=None, jwt=None):
     data = resp.json()
     if data.get("success"):
         return data.get("data", {}).get("token")
-    raise Exception(f"YYDS 鑾峰彇token澶辫触: {data}")
+    raise Exception(f"YYDS failed to get token: {data}")
 
 
 def yyds_get_messages(address, token=None, api_key=None, jwt=None):
@@ -1015,7 +1015,7 @@ def yyds_get_message_detail(message_id, token=None, api_key=None, jwt=None):
     data = resp.json()
     if data.get("success"):
         return data.get("data", {})
-    raise Exception(f"YYDS 鑾峰彇閭欢璇︽儏澶辫触: {data}")
+    raise Exception(f"YYDS failed to fetch message detail: {data}")
 
 
 def yyds_generate_username(length=10):
@@ -1026,7 +1026,7 @@ def yyds_generate_username(length=10):
 def yyds_pick_domain(api_key=None, jwt=None):
     domains = yyds_get_domains(api_key=api_key, jwt=jwt)
     if not domains:
-        raise Exception("YYDS 娌℃湁杩斿洖浠讳綍鍙敤鍩熷悕")
+        raise Exception("YYDS returned no available domains")
     private = [d for d in domains if d.get("isVerified") and not d.get("isPublic")]
     if private:
         return private[0]["domain"]
@@ -1036,14 +1036,14 @@ def yyds_pick_domain(api_key=None, jwt=None):
     verified = [d for d in domains if d.get("isVerified")]
     if verified:
         return verified[0]["domain"]
-    raise Exception("YYDS 鏃犲凡楠岃瘉鍩熷悕鍙敤")
+    raise Exception("YYDS has no verified domains available")
 
 
 def yyds_get_email_and_token(api_key=None, jwt=None):
     key = api_key or get_yyds_api_key()
     token = jwt or get_yyds_jwt()
     if not token and not key:
-        raise Exception("YYDS API Key 或 JWT 未配置")
+        raise Exception("YYDS API key or JWT is not configured")
     domain = yyds_pick_domain(api_key=key, jwt=token)
     username = yyds_generate_username(10)
     result = yyds_create_account(
@@ -1054,8 +1054,8 @@ def yyds_get_email_and_token(api_key=None, jwt=None):
     if not temp_token:
         temp_token = yyds_get_token(address, api_key=key, jwt=token)
     if not temp_token:
-        raise Exception("鑾峰彇 YYDS token 澶辫触")
-    print(f"[*] 宸插垱寤?YYDS 閭: {address}")
+        raise Exception("Failed to get YYDS token")
+    print(f"[*] Created YYDS mailbox: {address}")
     return address, temp_token
 
 
@@ -1076,7 +1076,7 @@ def yyds_get_oai_code(
             messages = yyds_get_messages(address, token=token, jwt=jwt)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] YYDS 鎷夊彇閭欢鍒楄〃澶辫触: {exc}")
+                log_callback(f"[Debug] YYDS failed to fetch message list: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         for msg in messages:
@@ -1091,7 +1091,7 @@ def yyds_get_oai_code(
                 detail = yyds_get_message_detail(msg_id, token=token, jwt=jwt)
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] YYDS 鑾峰彇閭欢璇︽儏澶辫触: {exc}")
+                    log_callback(f"[Debug] YYDS failed to fetch message detail: {exc}")
                 continue
             parts = []
             text_body = detail.get("text") or ""
@@ -1103,14 +1103,14 @@ def yyds_get_oai_code(
             combined = "\n".join(parts)
             subject = detail.get("subject", "")
             if log_callback:
-                log_callback(f"[Debug] YYDS 鏀跺埌閭欢: {subject}")
+                log_callback(f"[Debug] YYDS received message: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] YYDS 浠庨偖浠朵腑鎻愬彇鍒伴獙璇佺爜: {code}")
+                    log_callback(f"[*] YYDS extracted verification code from email: {code}")
                 return code
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"YYDS 在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"YYDS did not receive a verification email within {timeout}s")
 
 
 def generate_username(length=10):
@@ -1121,7 +1121,7 @@ def generate_username(length=10):
 def pick_domain(api_key=None):
     domains = get_domains(api_key=api_key)
     if not domains:
-        raise Exception("DuckMail 娌℃湁杩斿洖浠讳綍鍙敤鍩熷悕")
+        raise Exception("DuckMail returned no available domains")
     private = [d for d in domains if d.get("ownerId")]
     verified_private = [d for d in private if d.get("isVerified")]
     if verified_private:
@@ -1129,7 +1129,7 @@ def pick_domain(api_key=None):
     public = [d for d in domains if d.get("isVerified")]
     if public:
         return public[0]["domain"]
-    raise Exception("DuckMail 鏃犲凡楠岃瘉鍩熷悕鍙敤")
+    raise Exception("DuckMail has no verified domains available")
 
 
 def get_email_provider():
@@ -1143,21 +1143,21 @@ def get_email_and_token(api_key=None):
     if provider == "cloudflare":
         api_base = get_cloudflare_api_base()
         if not api_base:
-            raise Exception("Cloudflare API Base 未配置")
+            raise Exception("Cloudflare API Base is not configured")
         try:
-            # cloudflare_temp_email 专用模式
+            # cloudflare_temp_email dedicated mode
             return cloudflare_create_temp_address(api_base)
         except Exception as primary_exc:
-            # 兜底回退到 Mail.tm 风格
+            # Fallback to Mail.tm-style flow
             key = api_key or get_cloudflare_api_key()
             domains = cloudflare_get_domains(api_base, api_key=key)
             if not domains:
-                raise Exception(f"Cloudflare 创建邮箱失败: {primary_exc}")
+                raise Exception(f"Cloudflare failed to create mailbox: {primary_exc}")
             verified = [d for d in domains if d.get("isVerified")]
             target = verified[0] if verified else domains[0]
             domain = target.get("domain")
             if not domain:
-                raise Exception("Cloudflare 域名数据格式错误，缺少 domain 字段")
+                raise Exception("Cloudflare domain data has invalid format: missing domain field")
             username = generate_username(10)
             address = f"{username}@{domain}"
             password = secrets.token_urlsafe(12)
@@ -1166,7 +1166,7 @@ def get_email_and_token(api_key=None):
             )
             token = cloudflare_get_token(api_base, address, password, api_key=key)
             if not token:
-                raise Exception("获取 Cloudflare 邮箱 token 失败")
+                raise Exception("Failed to get Cloudflare mailbox token")
             return address, token
     key = api_key or get_duckmail_api_key()
     domain = pick_domain(api_key=key)
@@ -1176,7 +1176,7 @@ def get_email_and_token(api_key=None):
     create_account(address, password, api_key=key, expires_in=0)
     token = get_token(address, password)
     if not token:
-        raise Exception("鑾峰彇 DuckMail token 澶辫触")
+        raise Exception("Failed to get DuckMail token")
     return address, token
 
 
@@ -1256,7 +1256,7 @@ def duckmail_get_oai_code(
             messages = get_messages(dev_token)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] 鎷夊彇閭欢鍒楄〃澶辫触: {exc}")
+                log_callback(f"[Debug] Failed to fetch message list: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         for msg in messages:
@@ -1271,7 +1271,7 @@ def duckmail_get_oai_code(
                 detail = get_message_detail(dev_token, msg_id)
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] 鑾峰彇閭欢璇︽儏澶辫触: {exc}")
+                    log_callback(f"[Debug] Failed to fetch message detail: {exc}")
                 continue
             parts = []
             text_body = detail.get("text") or ""
@@ -1283,14 +1283,14 @@ def duckmail_get_oai_code(
             combined = "\n".join(parts)
             subject = detail.get("subject", "")
             if log_callback:
-                log_callback(f"[Debug] 鏀跺埌閭欢: {subject}")
+                log_callback(f"[Debug] Received message: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] 浠庨偖浠朵腑鎻愬彇鍒伴獙璇佺爜: {code}")
+                    log_callback(f"[*] Extracted verification code from email: {code}")
                 return code
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"Did not receive a verification email within {timeout}s")
 
 
 def cloudflare_get_oai_code(
@@ -1304,9 +1304,9 @@ def cloudflare_get_oai_code(
 ):
     api_base = get_cloudflare_api_base()
     if not api_base:
-        raise Exception("Cloudflare API Base 未配置")
+        raise Exception("Cloudflare API Base is not configured")
     deadline = time.time() + timeout
-    # 同一封邮件正文可能延迟可读，允许多次重试解析，避免偶发漏码
+    # The same email body may become readable later; retry parsing to avoid occasional missed codes
     seen_attempts = {}
     next_resend_at = time.time() + 35
     while time.time() < deadline:
@@ -1315,20 +1315,20 @@ def cloudflare_get_oai_code(
             try:
                 resend_callback()
                 if log_callback:
-                    log_callback("[*] 已触发重新发送验证码")
+                    log_callback("[*] Triggered verification code resend")
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] 触发重发验证码失败: {exc}")
+                    log_callback(f"[Debug] Failed to trigger verification code resend: {exc}")
             next_resend_at = time.time() + 35
         try:
             messages = cloudflare_get_messages(api_base, dev_token)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] Cloudflare 拉取邮件列表失败: {exc}")
+                log_callback(f"[Debug] Cloudflare failed to fetch message list: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         if log_callback:
-            log_callback(f"[Debug] Cloudflare 本轮邮件数量: {len(messages)}")
+            log_callback(f"[Debug] Cloudflare message count this round: {len(messages)}")
 
         for msg in messages:
             msg_id = msg.get("id") or msg.get("msgid")
@@ -1340,17 +1340,17 @@ def cloudflare_get_oai_code(
             seen_attempts[msg_id] = attempt + 1
             recipients = [t.get("address", "").lower() for t in (msg.get("to") or [])]
             msg_addr = str(msg.get("address", "")).lower()
-            # 优先匹配目标邮箱；若结构不一致也允许继续解析，避免接口字段漂移导致漏码
+            # Prefer the target email, but keep parsing if the structure differs to tolerate API field drift
             address_matched = True
             if recipients:
                 address_matched = email.lower() in recipients
             elif msg_addr:
                 address_matched = msg_addr == email.lower()
             if not address_matched and log_callback:
-                log_callback(f"[Debug] 跳过疑似非目标邮件 id={msg_id} address={msg_addr} to={recipients}")
+                log_callback(f"[Debug] Skipping likely non-target message id={msg_id} address={msg_addr} to={recipients}")
                 continue
             parts = []
-            # 先直接从列表项取内容，避免 detail 接口差异导致漏码
+            # Read content from the list item first to avoid missed codes caused by detail API differences
             for field in ("text", "raw", "content", "intro", "body", "snippet"):
                 value = msg.get(field)
                 if isinstance(value, str) and value.strip():
@@ -1362,7 +1362,7 @@ def cloudflare_get_oai_code(
                 parts.append(re.sub(r"<[^>]+>", " ", h))
             subject = str(msg.get("subject", "") or "")
             combined = "\n".join(parts)
-            # 再尝试 detail 接口补全内容
+            # Then try the detail API to complete content
             try:
                 detail = cloudflare_get_message_detail(api_base, dev_token, msg_id)
                 for field in ("text", "raw", "content", "intro", "body", "snippet"):
@@ -1378,18 +1378,18 @@ def cloudflare_get_oai_code(
                     subject = str(detail.get("subject", "") or "")
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] Cloudflare detail接口失败，改用列表内容解析: {exc}")
+                    log_callback(f"[Debug] Cloudflare detail API failed; parsing list content instead: {exc}")
             if log_callback:
-                log_callback(f"[Debug] Cloudflare 收到邮件: {subject}")
+                log_callback(f"[Debug] Cloudflare received message: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] Cloudflare 从邮件中提取到验证码: {code}")
+                    log_callback(f"[*] Cloudflare extracted verification code from email: {code}")
                 return code
             elif log_callback:
-                log_callback(f"[Debug] 邮件已解析但未提取到验证码 id={msg_id} attempt={seen_attempts[msg_id]}")
+                log_callback(f"[Debug] Message parsed but no verification code extracted id={msg_id} attempt={seen_attempts[msg_id]}")
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"Cloudflare 在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"Cloudflare Did not receive a verification email within {timeout}s")
 
 
 def generate_random_birthdate():
@@ -1451,14 +1451,14 @@ def set_birth_date(session, log_callback=None):
         if is_cloudflare_block_response(res):
             return (
                 False,
-                "set_birth_date 被 grok.com 的 Cloudflare 防护拦截，HTTP "
+                "set_birth_date was blocked by grok.com Cloudflare protection, HTTP "
                 f"{res.status_code}",
             )
         return False, f"set_birth_date HTTP {res.status_code}: {response_preview(res)}"
     except Exception as e:
         if log_callback:
-            log_callback(f"[set_birth_date] 异常: {e}")
-        return False, f"set_birth_date 异常: {e}"
+            log_callback(f"[set_birth_date] exception: {e}")
+        return False, f"set_birth_date exception: {e}"
 
 
 def set_tos_accepted(session, log_callback=None):
@@ -1481,14 +1481,14 @@ def set_tos_accepted(session, log_callback=None):
         if is_cloudflare_block_response(res):
             return (
                 False,
-                "set_tos_accepted 被 accounts.x.ai 的 Cloudflare 防护拦截，HTTP "
+                "set_tos_accepted was blocked by accounts.x.ai Cloudflare protection, HTTP "
                 f"{res.status_code}",
             )
         return False, f"set_tos_accepted HTTP {res.status_code}: {response_preview(res)}"
     except Exception as e:
         if log_callback:
-            log_callback(f"[set_tos_accepted] 异常: {e}")
-        return False, f"set_tos_accepted 异常: {e}"
+            log_callback(f"[set_tos_accepted] exception: {e}")
+        return False, f"set_tos_accepted exception: {e}"
 
 
 def encode_grpc_nsfw_settings():
@@ -1521,14 +1521,14 @@ def update_nsfw_settings(session, log_callback=None):
         if is_cloudflare_block_response(res):
             return (
                 False,
-                "update_nsfw_settings 被 grok.com 的 Cloudflare 防护拦截，HTTP "
+                "update_nsfw_settings was blocked by grok.com Cloudflare protection, HTTP "
                 f"{res.status_code}",
             )
         return False, f"update_nsfw_settings HTTP {res.status_code}: {response_preview(res)}"
     except Exception as e:
         if log_callback:
-            log_callback(f"[update_nsfw] 异常: {e}")
-        return False, f"update_nsfw_settings 异常: {e}"
+            log_callback(f"[update_nsfw] exception: {e}")
+        return False, f"update_nsfw_settings exception: {e}"
 
 
 def enable_nsfw_for_token(token, cf_clearance="", log_callback=None):
@@ -1554,9 +1554,9 @@ def enable_nsfw_for_token(token, cf_clearance="", log_callback=None):
             ok, message = update_nsfw_settings(session, log_callback)
             if not ok:
                 return False, message
-            return True, "成功开启 NSFW"
+            return True, "NSFW enabled successfully"
     except Exception as e:
-        return False, f"异常: {str(e)}"
+        return False, f"exception: {str(e)}"
 
 
 SIGNUP_URL = "https://accounts.x.ai/sign-up?redirect=grok-com"
@@ -1570,14 +1570,14 @@ def _wait_cpa_async_threads(timeout=300, log_callback=None, skip_if_stopping=Non
     if skip_if_stopping and skip_if_stopping():
         timeout = min(float(timeout or 0), 5.0)
         if log_callback:
-            log_callback(f"[*] 停止中，仅短暂等待 CPA mint 线程（{timeout:.0f}s）...")
+            log_callback(f"[*] Stopping; briefly waiting for CPA mint threads ({timeout:.0f}s)...")
     with _cpa_threads_lock:
         threads = [t for t in _cpa_async_threads if t.is_alive()]
         _cpa_async_threads = [t for t in _cpa_async_threads if t.is_alive()]
     if not threads:
         return
     if log_callback and not (skip_if_stopping and skip_if_stopping()):
-        log_callback(f"[*] 等待 {len(threads)} 个异步 CPA mint 线程完成...")
+        log_callback(f"[*] Waiting for {len(threads)} async CPA mint threads to finish...")
     deadline = time.time() + max(float(timeout or 0), 0)
     for t in threads:
         remaining = deadline - time.time()
@@ -1587,9 +1587,9 @@ def _wait_cpa_async_threads(timeout=300, log_callback=None, skip_if_stopping=Non
     alive = [t for t in threads if t.is_alive()]
     if log_callback:
         if alive:
-            log_callback(f"[!] {len(alive)} 个 CPA mint 线程超时未完成")
+            log_callback(f"[!] {len(alive)} CPA mint threads timed out")
         else:
-            log_callback("[+] 所有 CPA mint 线程已完成")
+            log_callback("[+] All CPA mint threads finished")
 
 
 def _track_cpa_async_thread(thread):
@@ -1598,14 +1598,14 @@ def _track_cpa_async_thread(thread):
 
 
 def _join_threads_interruptible(threads, should_stop=None, timeout=None, poll=0.5):
-    """可被 stop/Ctrl+C 打断的线程等待，避免 join() 永久阻塞。"""
+    """Thread wait that can be interrupted by stop/Ctrl+C to avoid blocking forever in join()."""
     threads = [t for t in (threads or []) if t is not None]
     if not threads:
         return
     deadline = None if timeout is None else (time.time() + max(float(timeout), 0))
     while any(t.is_alive() for t in threads):
         if should_stop and should_stop():
-            # 给 worker 一点时间走 finally/stop_browser，再返回
+            # Give workers a little time to run finally/stop_browser before returning
             grace_deadline = time.time() + 3
             while any(t.is_alive() for t in threads) and time.time() < grace_deadline:
                 for t in threads:
@@ -1750,14 +1750,14 @@ def start_browser(log_callback=None):
             tabs = _get_browser().get_tabs()
             _set_page(tabs[-1] if tabs else _get_browser().new_tab())
             if log_callback and getattr(_get_browser(), "user_data_path", None):
-                log_callback(f"[Debug] 当前浏览器资料目录: {_get_browser().user_data_path}")
+                log_callback(f"[Debug] Current browser profile dir: {_get_browser().user_data_path}")
             if log_callback and attempt > 1:
-                log_callback(f"[*] 浏览器第 {attempt} 次启动成功")
+                log_callback(f"[*] Browser startup attempt {attempt} succeeded")
             return _get_browser(), _get_page()
         except Exception as exc:
             last_exc = exc
             if log_callback:
-                log_callback(f"[Debug] 浏览器启动失败(第{attempt}/4次): {exc}")
+                log_callback(f"[Debug] Browser startup failed (attempt {attempt}/4): {exc}")
             try:
                 if _get_browser() is not None:
                     _get_browser().quit(del_data=True)
@@ -1766,7 +1766,7 @@ def start_browser(log_callback=None):
             _set_browser(None)
             _set_page(None)
             time.sleep(min(1.5 * attempt, 4))
-    raise Exception(f"浏览器启动失败，已重试4次: {last_exc}")
+    raise Exception(f"Browser startup failed after 4 attempts: {last_exc}")
 
 
 def stop_browser():
@@ -1803,7 +1803,7 @@ def restart_browser(log_callback=None):
 
 
 def prepare_clean_browser_session(log_callback=None, cancel_callback=None):
-    """轻量清理：避免预访问 xAI/grok 触发 Cloudflare，同时尽量清掉残留登录态。"""
+    """Light cleanup: avoid pre-visiting xAI/grok and triggering Cloudflare while clearing residual login state when possible."""
     raise_if_cancelled(cancel_callback)
     page = _get_page()
     browser = _get_browser()
@@ -1826,7 +1826,7 @@ try { sessionStorage.clear(); } catch (e) {}
                 )
             except Exception:
                 pass
-        # 尽量清 cookie，但不主动打开 accounts.x.ai / grok.com（容易先撞 CF）
+        # Clear cookies as much as possible, but do not actively open accounts.x.ai or grok.com because that can hit CF first
         if browser is not None and hasattr(browser, "set_cookies"):
             try:
                 browser.set_cookies(False)
@@ -1838,15 +1838,15 @@ try { sessionStorage.clear(); } catch (e) {}
             except Exception:
                 pass
         if log_callback:
-            log_callback("[Debug] 已做轻量会话清理，准备打开注册页")
+            log_callback("[Debug] Light session cleanup done; ready to open registration page")
     except Exception as exc:
         if log_callback:
-            log_callback(f"[Debug] 清理浏览器会话失败，将重启浏览器: {exc}")
+            log_callback(f"[Debug] Browser session cleanup failed; restarting browser: {exc}")
         restart_browser(log_callback=log_callback)
 
 
 def detect_cloudflare_block_page(log_callback=None):
-    """检测当前页是否为 Cloudflare 拦截/故障排除页。"""
+    """Detect whether the current page is a Cloudflare block/troubleshooting page."""
     page = _get_page()
     if page is None:
         return False, ""
@@ -1862,7 +1862,7 @@ return { url: location.href || '', title, body, html };
         )
     except Exception as exc:
         if log_callback:
-            log_callback(f"[Debug] 读取页面检测 CF 失败: {exc}")
+            log_callback(f"[Debug] Failed to read page while checking CF: {exc}")
         return False, ""
     if not isinstance(info, dict):
         return False, ""
@@ -1895,13 +1895,13 @@ return { url: location.href || '', title, body, html };
     return True, detail
 
 
-def cleanup_runtime_memory(log_callback=None, reason="定期清理"):
+def cleanup_runtime_memory(log_callback=None, reason="periodic cleanup"):
     if log_callback:
-        log_callback(f"[*] {reason}: 关闭浏览器并清理内存")
+        log_callback(f"[*] {reason}: closing browser and cleaning memory")
     stop_browser()
     collected = gc.collect()
     if log_callback:
-        log_callback(f"[*] Python GC 已回收对象数: {collected}")
+        log_callback(f"[*] Python GC collected objects: {collected}")
 
 
 def refresh_active_page():
@@ -2056,7 +2056,7 @@ return {
             return snap
     except Exception as exc:
         if log_callback:
-            log_callback(f"[Debug] 读取注册页快照失败: {exc}")
+            log_callback(f"[Debug] Failed to read registration page snapshot: {exc}")
     try:
         return {
             "url": getattr(page, "url", "") or "",
@@ -2076,15 +2076,15 @@ def click_email_signup_button(timeout=18, log_callback=None, cancel_callback=Non
         raise_if_cancelled(cancel_callback)
         blocked, detail = detect_cloudflare_block_page(log_callback=log_callback)
         if blocked:
-            raise Exception(f"Cloudflare 拦截页，无法点击邮箱注册: {detail}")
+            raise Exception(f"Cloudflare block page; cannot click email signup: {detail}")
         if log_callback:
-            log_callback("[Debug] 尝试查找“使用邮箱注册”按钮...")
+            log_callback("[Debug] Trying to find the email signup button...")
 
         try:
             clicked = _get_page().run_js(_EMAIL_SIGNUP_JS)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] 查找邮箱注册按钮异常: {exc}")
+                log_callback(f"[Debug] Email signup button lookup error: {exc}")
             clicked = None
 
         state = clicked.get("state") if isinstance(clicked, dict) else clicked
@@ -2095,12 +2095,12 @@ def click_email_signup_button(timeout=18, log_callback=None, cancel_callback=Non
             elif isinstance(clicked, str):
                 detail = f": {clicked}"
             if log_callback:
-                log_callback(f"[*] 已点击「使用邮箱注册」按钮{detail}")
+                log_callback(f"[*] Clicked the email signup button{detail}")
             sleep_with_cancel(1.5, cancel_callback)
             return True
         if state == "email-form-ready":
             if log_callback:
-                log_callback("[*] 已处于邮箱注册表单，跳过入口按钮点击")
+                log_callback("[*] Already on the email signup form; skipping entry-button click")
             return True
 
         now = time.time()
@@ -2110,9 +2110,9 @@ def click_email_signup_button(timeout=18, log_callback=None, cancel_callback=Non
             url = (snap or {}).get("url") or (_get_page().url if _get_page() else "none")
             buttons = " | ".join((snap or {}).get("buttons") or []) or "none"
             body = ((snap or {}).get("body") or "")[:160]
-            log_callback(f"[Debug] 当前URL: {url}; buttons={buttons}; body={body}")
+            log_callback(f"[Debug] Current URL: {url}; buttons={buttons}; body={body}")
 
-        # 页面若仍空白/未加载完，主动再刷一次注册页
+        # If the page is still blank or not fully loaded, proactively refresh the registration page
         try:
             url_now = (_get_page().url if _get_page() else "") or ""
             if "about:blank" in url_now or not url_now:
@@ -2124,11 +2124,11 @@ def click_email_signup_button(timeout=18, log_callback=None, cancel_callback=Non
 
     blocked, detail = detect_cloudflare_block_page(log_callback=log_callback)
     if blocked:
-        raise Exception(f"Cloudflare 拦截页，无法点击邮箱注册: {detail}")
+        raise Exception(f"Cloudflare block page; cannot click email signup: {detail}")
     snap = _signup_page_snapshot(log_callback)
     if log_callback:
         log_callback(
-            f"[Debug] 页面内容片段: url={snap.get('url')}; title={snap.get('title')}; "
+            f"[Debug] Page content snippet: url={snap.get('url')}; title={snap.get('title')}; "
             f"buttons={' | '.join(snap.get('buttons') or []) or 'none'}; body={(snap.get('body') or '')[:300]}"
         )
     fail_url = str(snap.get("url") or "unknown")
@@ -2138,9 +2138,9 @@ def click_email_signup_button(timeout=18, log_callback=None, cancel_callback=Non
     if any(k in low for k in ("tos-gate", "accept-tos", "/tos", "grok.com")) or any(
         k in fail_buttons for k in ("知道了", "Got it", "I understand")
     ):
-        residual_hint = "；疑似上号会话/TOS 残留（非缺点击流程），账号结束后将完整重启浏览器"
+        residual_hint = "; likely previous-account session/TOS residue, not a missing click flow. Browser will fully restart after this account"
     raise Exception(
-        "未找到「使用邮箱注册」按钮"
+        "Email signup button not found"
         f"（url={fail_url}; buttons={fail_buttons}{residual_hint}）"
     )
 
@@ -2150,9 +2150,9 @@ def open_signup_page(log_callback=None, cancel_callback=None):
     if _get_browser() is None:
         start_browser(log_callback=log_callback)
         if log_callback:
-            log_callback("[*] 浏览器已启动")
+            log_callback("[*] Browser started")
         if not os.path.exists(EXTENSION_PATH) and log_callback:
-            log_callback("[!] 未找到 turnstilePatch 扩展目录，Turnstile 辅助可能不可用")
+            log_callback("[!] turnstilePatch extension directory not found; Turnstile helper may be unavailable")
     prepare_clean_browser_session(log_callback=log_callback, cancel_callback=cancel_callback)
     last_exc = None
     opened = False
@@ -2170,13 +2170,13 @@ def open_signup_page(log_callback=None, cancel_callback=None):
                 _set_page(browser.new_tab())
             _get_page().get(SIGNUP_URL)
             _get_page().wait.doc_loaded()
-            # 给 CF/前端一点渲染时间
+            # Give CF/frontend a little render time
             sleep_with_cancel(1.2, cancel_callback)
             blocked, detail = detect_cloudflare_block_page(log_callback=log_callback)
             if blocked:
-                last_exc = Exception(f"Cloudflare 拦截页: {detail}")
+                last_exc = Exception(f"Cloudflare block page: {detail}")
                 if log_callback:
-                    log_callback(f"[!] 检测到 Cloudflare 拦截/故障排除页，重启浏览器重试 ({attempt}/3): {detail}")
+                    log_callback(f"[!] Detected Cloudflare block/troubleshooting page; restarting browser and retrying ({attempt}/3): {detail}")
                 restart_browser(log_callback=log_callback)
                 sleep_with_cancel(1.5, cancel_callback)
                 continue
@@ -2188,15 +2188,15 @@ def open_signup_page(log_callback=None, cancel_callback=None):
         except Exception as e:
             last_exc = e
             if log_callback:
-                log_callback(f"[Debug] 打开注册页失败(第{attempt}/3次): {e}")
+                log_callback(f"[Debug] Failed to open registration page (attempt {attempt}/3): {e}")
             try:
                 restart_browser(log_callback=log_callback)
             except Exception as e2:
                 if log_callback:
-                    log_callback(f"[Debug] 重启浏览器失败: {e2}")
+                    log_callback(f"[Debug] Failed to restart browser: {e2}")
             sleep_with_cancel(1, cancel_callback)
     if not opened:
-        raise Exception(f"打开注册页失败: {last_exc}")
+        raise Exception(f"Failed to open registration page: {last_exc}")
 
     _deadline = time.time() + 10
     while time.time() < _deadline:
@@ -2204,8 +2204,8 @@ def open_signup_page(log_callback=None, cancel_callback=None):
         blocked, detail = detect_cloudflare_block_page(log_callback=log_callback)
         if blocked:
             if log_callback:
-                log_callback(f"[!] 注册页加载后仍是 Cloudflare 拦截页: {detail}")
-            raise Exception(f"Cloudflare 拦截页: {detail}")
+                log_callback(f"[!] Registration page is still a Cloudflare block page after loading: {detail}")
+            raise Exception(f"Cloudflare block page: {detail}")
         try:
             _ready = _get_page().run_js(
                 "return !!document.querySelector('button, input[type=\"email\"], a[href*=\"sign\"], a[href*=\"email\"], form')"
@@ -2216,7 +2216,7 @@ def open_signup_page(log_callback=None, cancel_callback=None):
             pass
         time.sleep(0.3)
     if log_callback:
-        log_callback(f"[*] 当前URL: {_get_page().url}")
+        log_callback(f"[*] Current URL: {_get_page().url}")
     click_email_signup_button(
         log_callback=log_callback, cancel_callback=cancel_callback
     )
@@ -2243,9 +2243,9 @@ def fill_email_and_submit(timeout=45, log_callback=None, cancel_callback=None):
     raise_if_cancelled(cancel_callback)
     email, dev_token = get_email_and_token()
     if not email or not dev_token:
-        raise Exception("获取邮箱失败")
+        raise Exception("Failed to get mailbox")
     if log_callback:
-        log_callback(f"[*] 已创建邮箱: {email}")
+        log_callback(f"[*] Created mailbox: {email}")
     deadline = time.time() + timeout
     last_diag_time = 0
     last_reclick_time = 0
@@ -2363,7 +2363,7 @@ return {
                 re_state = reclicked.get("state") if isinstance(reclicked, dict) else reclicked
                 if re_state == "email-form-ready":
                     if log_callback:
-                        log_callback("[Debug] 邮箱输入框检测中：页面已进入邮箱表单")
+                        log_callback("[Debug] Checking email input: page has entered the email form")
                 elif re_state in ("clicked", True) or (isinstance(reclicked, str) and reclicked):
                     detail = ""
                     if isinstance(reclicked, dict) and reclicked.get("text"):
@@ -2371,18 +2371,18 @@ return {
                     elif isinstance(reclicked, str):
                         detail = f": {reclicked}"
                     if log_callback:
-                        log_callback(f"[Debug] 邮箱输入框未出现，已再次触发邮箱注册入口{detail}")
+                        log_callback(f"[Debug] Email input not visible; triggered the email signup entry again{detail}")
             if log_callback and now - last_diag_time >= 5:
                 last_diag_time = now
                 inputs = " | ".join((filled or {}).get("inputs", [])[:6]) if isinstance(filled, dict) else ""
                 buttons = " | ".join((filled or {}).get("buttons", [])[:8]) if isinstance(filled, dict) else ""
                 url = (filled or {}).get("url", _get_page().url if _get_page() else "") if isinstance(filled, dict) else (_get_page().url if _get_page() else "")
-                log_callback(f"[Debug] 等待邮箱输入框: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}")
+                log_callback(f"[Debug] Waiting for email input: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}")
             sleep_with_cancel(0.5, cancel_callback)
             continue
         if state != "filled":
             if log_callback:
-                log_callback(f"[Debug] 邮箱输入框已出现，但写入失败: {filled}")
+                log_callback(f"[Debug] Email input appeared, but filling Failed: {filled}")
             sleep_with_cancel(0.5, cancel_callback)
             continue
         sleep_with_cancel(0.8, cancel_callback)
@@ -2463,7 +2463,7 @@ return 'enter';
         if clicked:
             if log_callback:
                 detail = f" ({clicked})" if isinstance(clicked, str) else ""
-                log_callback(f"[*] 已填写邮箱并提交: {email}{detail}")
+                log_callback(f"[*] Filled and submitted email: {email}{detail}")
             return email, dev_token
         sleep_with_cancel(0.5, cancel_callback)
     if last_snapshot:
@@ -2471,9 +2471,9 @@ return 'enter';
         buttons = " | ".join(last_snapshot.get("buttons", [])[:8])
         url = last_snapshot.get("url", _get_page().url if _get_page() else "")
         raise Exception(
-            f"未找到邮箱输入框或注册按钮，最后页面: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}"
+            f"Email input or signup button not found; last page: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}"
         )
-    raise Exception("未找到邮箱输入框或注册按钮")
+    raise Exception("Email input or signup button not found")
 
 
 def fill_code_and_submit(email, dev_token, timeout=180, log_callback=None, cancel_callback=None):
@@ -2498,7 +2498,7 @@ return false;
         resend_callback=_resend_code,
     )
     if not code:
-        raise Exception("获取验证码失败")
+        raise Exception("Failed to get verification code")
     clean_code = str(code).replace("-", "").strip()
     deadline = time.time() + timeout
 
@@ -2570,7 +2570,7 @@ return 'not-ready';
             continue
         if "failed" in str(filled):
             if log_callback:
-                log_callback(f"[Debug] 验证码填写失败: {filled}")
+                log_callback(f"[Debug] Verification code fill Failed: {filled}")
             sleep_with_cancel(0.5, cancel_callback)
             continue
 
@@ -2609,18 +2609,18 @@ return 'clicked';
 
         if clicked == "clicked" or clicked == "no-button":
             if log_callback:
-                log_callback(f"[*] 已填写验证码并提交: {code}")
+                log_callback(f"[*] Filled and submitted verification code: {code}")
             sleep_with_cancel(1.5, cancel_callback)
             return code
 
         sleep_with_cancel(0.5, cancel_callback)
 
-    raise Exception("验证码已获取，但自动填写/提交失败")
+    raise Exception("Verification code was fetched, but auto fill/submit failed")
 
 
 def getTurnstileToken(log_callback=None, cancel_callback=None):
     if _get_page() is None:
-        raise Exception("页面未就绪，无法执行 Turnstile")
+        raise Exception("Page not ready; cannot execute Turnstile")
 
     try:
         _get_page().run_js(
@@ -2647,7 +2647,7 @@ try {
             token = str(token or "").strip()
             if len(token) >= 80:
                 if log_callback:
-                    log_callback(f"[*] Turnstile 已通过，token长度={len(token)}")
+                    log_callback(f"[*] Turnstile passed, token length={len(token)}")
                 return token
 
             challenge_input = _get_page().ele("@name=cf-turnstile-response")
@@ -2680,7 +2680,7 @@ Object.defineProperty(MouseEvent.prototype, 'screenY', { value: sy });
                     except Exception:
                         pass
             else:
-                # 兜底：尝试触发页面上可见的 Turnstile 容器
+                # Fallback: try triggering the visible Turnstile container on the page
                 _get_page().run_js(
                     """
 const nodes = Array.from(document.querySelectorAll('div,span,iframe')).filter((n) => {
@@ -2694,7 +2694,7 @@ if (nodes.length && typeof nodes[0].click === 'function') nodes[0].click();
             pass
         sleep_with_cancel(1, cancel_callback)
 
-    raise Exception("Turnstile 获取 token 失败")
+    raise Exception("Turnstile failed to get token")
 
 
 def build_profile():
@@ -2788,7 +2788,7 @@ const submitBtn = buttons.find((node) => {
     return t.includes('完成注册') || t.includes('创建账户') || t.includes('signup') || t.includes('createaccount');
 });
 
-// 必须等待 Cloudflare 校验通过后再提交
+// Wait for Cloudflare verification before submitting
 const cfInput = document.querySelector('input[name="cf-turnstile-response"]');
 const cfPresent = !!cfInput
   || !!document.querySelector('iframe[src*="turnstile"], div.cf-turnstile, [data-sitekey], script[src*="turnstile"]');
@@ -2812,19 +2812,19 @@ return 'filled-no-submit';
                 form_filled_once = True
                 token_len = filled.split(":", 1)[1] if ":" in filled else "0"
                 if log_callback:
-                    log_callback(f"[*] 资料已填写，等待 Cloudflare 人机验证通过... 当前token长度={token_len}")
+                    log_callback(f"[*] Profile filled; waiting for Cloudflare human verification... current token length={token_len}")
                 if token_len == "0":
                     pause_seconds = random.uniform(1, 3)
                     if log_callback:
-                        log_callback(f"[*] Cloudflare token 为空，暂停 {pause_seconds:.1f}s 后继续检测")
+                        log_callback(f"[*] Cloudflare token is empty; pausing {pause_seconds:.1f}s before checking again")
                     sleep_with_cancel(pause_seconds, cancel_callback)
                 now = time.time()
                 if wait_cf_since is None:
                     wait_cf_since = now
-                # 卡住后自动二次复用 Turnstile 组件
+                # When stuck, automatically reuse the Turnstile widget a second time
                 if now - wait_cf_since >= 12 and now - last_cf_retry_at >= 8:
                     if log_callback:
-                        log_callback("[*] Cloudflare 验证卡住，开始二次复用 Turnstile...")
+                        log_callback("[*] Cloudflare verification is stuck; starting second Turnstile reuse...")
                     try:
                         token = getTurnstileToken(log_callback=log_callback, cancel_callback=cancel_callback)
                         if token:
@@ -2843,10 +2843,10 @@ return String(cfInput.value || '').trim().length;
                                 token,
                             )
                             if log_callback:
-                                log_callback(f"[*] Turnstile 二次复用完成，回填长度={synced}")
+                                log_callback(f"[*] Second Turnstile reuse finished, synced length={synced}")
                     except Exception as cf_exc:
                         if log_callback:
-                            log_callback(f"[Debug] Turnstile 二次复用失败: {cf_exc}")
+                            log_callback(f"[Debug] Second Turnstile reuse Failed: {cf_exc}")
                     last_cf_retry_at = now
                 sleep_with_cancel(0.8, cancel_callback)
                 continue
@@ -2854,7 +2854,7 @@ return String(cfInput.value || '').trim().length;
             if filled in ("ready-to-submit", "filled-no-submit"):
                 form_filled_once = True
             elif filled == "fill-failed" and log_callback:
-                log_callback("[Debug] 资料输入失败，重试中...")
+                log_callback("[Debug] Profile input failed; retrying...")
                 sleep_with_cancel(0.5, cancel_callback)
                 continue
             elif filled == "not-ready":
@@ -2909,13 +2909,13 @@ return 'submitted';
         if isinstance(submit_state, str) and submit_state.startswith("wait-cloudflare"):
             if log_callback:
                 token_len = submit_state.split(":", 1)[1] if ":" in submit_state else "0"
-                log_callback(f"[*] 等待 Cloudflare 人机验证通过后再提交... 当前token长度={token_len}")
+                log_callback(f"[*] Waiting for Cloudflare human verification before submitting... current token length={token_len}")
             now = time.time()
             if wait_cf_since is None:
                 wait_cf_since = now
             if now - wait_cf_since >= 12 and now - last_cf_retry_at >= 8:
                 if log_callback:
-                    log_callback("[*] 提交前仍卡住，自动再次复用 Turnstile...")
+                    log_callback("[*] Still stuck before submit; reusing Turnstile again...")
                 try:
                     token = getTurnstileToken(log_callback=log_callback, cancel_callback=cancel_callback)
                     if token:
@@ -2934,27 +2934,27 @@ return String(cfInput.value || '').trim().length;
                             token,
                         )
                         if log_callback:
-                            log_callback(f"[*] Turnstile 二次复用完成，回填长度={synced}")
+                            log_callback(f"[*] Second Turnstile reuse finished, synced length={synced}")
                 except Exception as cf_exc:
                     if log_callback:
-                        log_callback(f"[Debug] Turnstile 二次复用失败: {cf_exc}")
+                        log_callback(f"[Debug] Second Turnstile reuse Failed: {cf_exc}")
                 last_cf_retry_at = now
             sleep_with_cancel(0.8, cancel_callback)
             continue
 
         if submit_state == "submitted":
             if log_callback:
-                log_callback(f"[*] 已填写注册资料并提交: {given_name} {family_name}")
+                log_callback(f"[*] Filled registration profile and submitted: {given_name} {family_name}")
             return {"given_name": given_name, "family_name": family_name, "password": password}
         wait_cf_since = None
         if isinstance(submit_state, str) and submit_state.startswith("no-submit-button") and log_callback:
             visible_buttons = submit_state.split(":", 1)[1] if ":" in submit_state else ""
-            suffix = f" 可见按钮: {visible_buttons}" if visible_buttons else ""
-            log_callback(f"[Debug] 未找到提交按钮，继续等待页面稳定...{suffix}")
+            suffix = f" visible buttons: {visible_buttons}" if visible_buttons else ""
+            log_callback(f"[Debug] Submit button not found; waiting for page to stabilize...{suffix}")
 
         sleep_with_cancel(0.5, cancel_callback)
 
-    raise Exception("最终注册页资料填写失败")
+    raise Exception("Final registration profile fill failed")
 
 
 def wait_for_sso_cookie(timeout=120, log_callback=None, cancel_callback=None):
@@ -2974,7 +2974,7 @@ def wait_for_sso_cookie(timeout=120, log_callback=None, cancel_callback=None):
                 sleep_with_cancel(1, cancel_callback)
                 continue
 
-            # 仍停留在“完成注册”页时，若 Cloudflare 已通过，周期性重试点击提交
+            # When still on the final signup page, periodically retry submit if Cloudflare has passed
             now = time.time()
             if now - last_submit_retry >= 2.5:
                 retried = _get_page().run_js(
@@ -3029,24 +3029,24 @@ return 'final-page-clicked-submit';
                 )
                 last_submit_retry = now
                 if log_callback and (retried == "final-page-clicked-submit" or (isinstance(retried, str) and retried.startswith("final-page-no-submit"))):
-                    log_callback(f"[Debug] 最终页状态: {retried}")
+                    log_callback(f"[Debug] Final page status: {retried}")
                 if isinstance(retried, str) and retried.startswith("final-page-no-submit"):
                     if retried != final_no_submit_state:
                         final_no_submit_state = retried
                         final_no_submit_since = now
                     elif final_no_submit_since and now - final_no_submit_since >= final_no_submit_timeout:
                         raise AccountRetryNeeded(
-                            f"最终注册页状态 {final_no_submit_timeout}s 未变化且未找到提交按钮，重试当前账号: {retried}"
+                            f"Final registration page state did not change for {final_no_submit_timeout}s and no submit button was found; retrying current account: {retried}"
                         )
                 else:
                     final_no_submit_state = ""
                     final_no_submit_since = None
                 if log_callback and isinstance(retried, str) and retried.startswith("final-page-wait-cf"):
                     token_len = retried.split(":", 1)[1] if ":" in retried else "0"
-                    log_callback(f"[Debug] 最终页状态: final-page-wait-cf, token长度={token_len}")
+                    log_callback(f"[Debug] Final page status: final-page-wait-cf, token length={token_len}")
                     if now - last_cf_retry_at >= 10:
                         if log_callback:
-                            log_callback("[*] 最终页 Cloudflare 卡住，自动二次复用 Turnstile...")
+                            log_callback("[*] Final page Cloudflare is stuck; automatically reusing Turnstile a second time...")
                         try:
                             token = getTurnstileToken(log_callback=log_callback, cancel_callback=cancel_callback)
                             if token:
@@ -3065,10 +3065,10 @@ return String(cfInput.value || '').trim().length;
                                     token,
                                 )
                                 if log_callback:
-                                    log_callback(f"[*] 最终页 Turnstile 二次复用完成，回填长度={synced}")
+                                    log_callback(f"[*] Final page second Turnstile reuse finished, synced length={synced}")
                         except Exception as cf_exc:
                             if log_callback:
-                                log_callback(f"[Debug] 最终页 Turnstile 二次复用失败: {cf_exc}")
+                                log_callback(f"[Debug] Final page second Turnstile reuse failed: {cf_exc}")
                         last_cf_retry_at = now
 
             cookies = _get_page().cookies(all_domains=True, all_info=True) or []
@@ -3085,7 +3085,7 @@ return String(cfInput.value || '').trim().length;
 
                 if name == "sso" and value:
                     if log_callback:
-                        log_callback("[*] 已获取到 sso cookie")
+                        log_callback("[*] Got sso cookie")
                     return value
         except PageDisconnectedError:
             refresh_active_page()
@@ -3097,14 +3097,14 @@ return String(cfInput.value || '').trim().length;
         sleep_with_cancel(1, cancel_callback)
 
     raise Exception(
-        f"等待超时：未获取到 sso cookie。已看到 cookies: {sorted(last_seen_names)}"
+        f"Timed out waiting for sso cookie. Seen cookies: {sorted(last_seen_names)}"
     )
 
 
 class GrokRegisterGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Grok 注册机")
+        self.root.title("Grok Register")
         self.root.geometry("1120x900")
         self.root.minsize(960, 700)
         self.is_running = False
@@ -3126,7 +3126,7 @@ class GrokRegisterGUI:
 
         config_frame = tk.LabelFrame(
             main_frame,
-            text="配置",
+            text="Configuration",
             bg=UI_PANEL_BG,
             fg=UI_FG,
             padx=10,
@@ -3157,12 +3157,12 @@ class GrokRegisterGUI:
                 pady=3,
             )
 
-        add_label(0, 0, "邮箱服务商:")
+        add_label(0, 0, "Email provider:")
         self.email_provider_var = tk.StringVar(value=config.get("email_provider", "duckmail"))
         self.email_provider_combo = tk_option_menu(config_frame, self.email_provider_var, ["duckmail", "yyds", "cloudflare"], width=12)
         add_field(self.email_provider_combo, 0, 1, sticky=tk.W)
 
-        add_label(0, 2, "注册数量:")
+        add_label(0, 2, "Registration count:")
         self.count_var = tk.StringVar(value=str(config.get("register_count", 1)))
         self.count_spinbox = tk.Spinbox(
             config_frame,
@@ -3180,12 +3180,12 @@ class GrokRegisterGUI:
         )
         add_field(self.count_spinbox, 0, 3, sticky=tk.W)
 
-        add_label(1, 0, "注册选项:")
+        add_label(1, 0, "Registration options:")
         self.nsfw_var = tk.BooleanVar(value=config.get("enable_nsfw", True))
-        self.nsfw_check = tk_checkbutton(config_frame, text="注册后开启 NSFW", variable=self.nsfw_var)
+        self.nsfw_check = tk_checkbutton(config_frame, text="Enable NSFW after registration", variable=self.nsfw_var)
         add_field(self.nsfw_check, 1, 1, sticky=tk.W)
 
-        add_label(1, 2, "代理（可选）:")
+        add_label(1, 2, "Proxy (optional):")
         self.proxy_var = tk.StringVar(value=config.get("proxy", ""))
         self.proxy_entry = tk_entry(config_frame, textvariable=self.proxy_var, width=34)
         add_field(self.proxy_entry, 1, 3)
@@ -3195,7 +3195,7 @@ class GrokRegisterGUI:
         self.api_key_entry = tk_entry(config_frame, textvariable=self.api_key_var, width=34)
         add_field(self.api_key_entry, 2, 1)
 
-        add_label(2, 2, "Cloudflare 鉴权模式:")
+        add_label(2, 2, "Cloudflare auth mode:")
         self.cloudflare_auth_mode_var = tk.StringVar(value=config.get("cloudflare_auth_mode", "none"))
         self.cloudflare_auth_mode_combo = tk_option_menu(
             config_frame, self.cloudflare_auth_mode_var, ["query-key", "bearer", "x-api-key", "x-admin-auth", "none"], width=12
@@ -3212,7 +3212,7 @@ class GrokRegisterGUI:
         self.cloudflare_api_key_entry = tk_entry(config_frame, textvariable=self.cloudflare_api_key_var, width=34)
         add_field(self.cloudflare_api_key_entry, 4, 1)
 
-        add_label(4, 2, "CF 路径:")
+        add_label(4, 2, "CF paths:")
         self.cloudflare_paths_var = tk.StringVar(
             value=",".join(
                 [
@@ -3226,58 +3226,58 @@ class GrokRegisterGUI:
         self.cloudflare_paths_entry = tk_entry(config_frame, textvariable=self.cloudflare_paths_var, width=34)
         add_field(self.cloudflare_paths_entry, 4, 3)
 
-        add_label(5, 0, "grok2api 本地入池:")
+        add_label(5, 0, "grok2api local pool:")
         self.grok2api_local_auto_var = tk.BooleanVar(value=bool(config.get("grok2api_auto_add_local", True)))
         self.grok2api_local_auto_check = tk_checkbutton(config_frame, variable=self.grok2api_local_auto_var)
         add_field(self.grok2api_local_auto_check, 5, 1, sticky=tk.W)
 
-        add_label(5, 2, "grok2api 池名:")
+        add_label(5, 2, "grok2api pool name:")
         self.grok2api_pool_name_var = tk.StringVar(value=str(config.get("grok2api_pool_name", "ssoBasic")))
         self.grok2api_pool_name_combo = tk_option_menu(
             config_frame, self.grok2api_pool_name_var, ["ssoBasic", "ssoSuper"], width=12
         )
         add_field(self.grok2api_pool_name_combo, 5, 3, sticky=tk.W)
 
-        add_label(6, 0, "本地 token.json:")
+        add_label(6, 0, "Local token.json:")
         self.grok2api_local_file_var = tk.StringVar(value=str(config.get("grok2api_local_token_file", "")))
         self.grok2api_local_file_entry = tk_entry(config_frame, textvariable=self.grok2api_local_file_var, width=72)
         add_field(self.grok2api_local_file_entry, 6, 1, columnspan=3)
 
-        add_label(7, 0, "grok2api 远端入池:")
+        add_label(7, 0, "grok2api remote pool:")
         self.grok2api_remote_auto_var = tk.BooleanVar(value=bool(config.get("grok2api_auto_add_remote", False)))
         self.grok2api_remote_auto_check = tk_checkbutton(config_frame, variable=self.grok2api_remote_auto_var)
         add_field(self.grok2api_remote_auto_check, 7, 1, sticky=tk.W)
 
-        add_label(8, 0, "grok2api 远端 Base:")
+        add_label(8, 0, "grok2api remote base:")
         self.grok2api_remote_base_var = tk.StringVar(value=str(config.get("grok2api_remote_base", "")))
         self.grok2api_remote_base_entry = tk_entry(config_frame, textvariable=self.grok2api_remote_base_var, width=72)
         add_field(self.grok2api_remote_base_entry, 8, 1, columnspan=3)
 
-        add_label(9, 0, "grok2api 远端 app_key:")
+        add_label(9, 0, "grok2api remote app_key:")
         self.grok2api_remote_key_var = tk.StringVar(value=str(config.get("grok2api_remote_app_key", "")))
         self.grok2api_remote_key_entry = tk_entry(config_frame, textvariable=self.grok2api_remote_key_var, width=72)
         add_field(self.grok2api_remote_key_entry, 9, 1, columnspan=3)
 
         btn_frame = tk.Frame(main_frame, bg=UI_BG)
         btn_frame.grid(row=1, column=0, sticky=tk.EW, pady=(0, 6))
-        self.start_btn = tk_button(btn_frame, text="开始注册", command=self.start_registration)
+        self.start_btn = tk_button(btn_frame, text="Start registration", command=self.start_registration)
         self.start_btn.pack(side=tk.LEFT, padx=5)
-        self.stop_btn = tk_button(btn_frame, text="停止", command=self.stop_registration, state=tk.DISABLED)
+        self.stop_btn = tk_button(btn_frame, text="Stop", command=self.stop_registration, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT, padx=5)
-        self.clear_btn = tk_button(btn_frame, text="清空日志", command=self.clear_log)
+        self.clear_btn = tk_button(btn_frame, text="Clear log", command=self.clear_log)
         self.clear_btn.pack(side=tk.LEFT, padx=5)
 
         status_frame = tk.Frame(main_frame, bg=UI_BG)
         status_frame.grid(row=2, column=0, sticky=tk.EW, pady=(0, 6))
-        self.status_var = tk.StringVar(value="就绪")
-        tk_label(status_frame, text="状态: ").pack(side=tk.LEFT)
+        self.status_var = tk.StringVar(value="Ready")
+        tk_label(status_frame, text="Status: ").pack(side=tk.LEFT)
         self.status_label = tk.Label(status_frame, textvariable=self.status_var, bg=UI_BG, fg="green")
         self.status_label.pack(side=tk.LEFT)
-        self.stats_var = tk.StringVar(value="成功: 0 | 失败: 0")
+        self.stats_var = tk.StringVar(value="Success: 0 | Failed: 0")
         tk.Label(status_frame, textvariable=self.stats_var, bg=UI_BG, fg=UI_FG).pack(side=tk.RIGHT)
         log_frame = tk.LabelFrame(
             main_frame,
-            text="日志",
+            text="Logs",
             bg=UI_PANEL_BG,
             fg=UI_FG,
             padx=5,
@@ -3303,8 +3303,8 @@ class GrokRegisterGUI:
             highlightbackground="#555555",
         )
         self.log_text.grid(row=0, column=0, sticky=tk.NSEW)
-        self.log("[*] GUI 已就绪，配置已加载")
-        self.log(f"[*] 当前邮箱服务商: {self.email_provider_var.get()} | 注册数量: {self.count_var.get()}")
+        self.log("[*] GUI ready; config loaded")
+        self.log(f"[*] Current email provider: {self.email_provider_var.get()} | Registration count: {self.count_var.get()}")
 
     def log(self, message):
         if not should_emit_log(message):
@@ -3314,7 +3314,7 @@ class GrokRegisterGUI:
         print(line, flush=True)
         try:
             self.log_text.insert(tk.END, f"{line}\n")
-            # 防止长时间运行日志区无限增长导致卡顿
+            # Prevent the log area from growing forever during long runs
             try:
                 line_count = int(float(str(self.log_text.index("end-1c").split(".")[0])))
                 if line_count > 5000:
@@ -3329,13 +3329,13 @@ class GrokRegisterGUI:
         self.log_text.delete(1.0, tk.END)
 
     def update_stats(self):
-        self.stats_var.set(f"成功: {self.success_count} | 失败: {self.fail_count}")
+        self.stats_var.set(f"Success: {self.success_count} | Failed: {self.fail_count}")
 
     def _set_running_ui(self, running):
         self.is_running = running
         self.start_btn.config(state=tk.DISABLED if running else tk.NORMAL)
         self.stop_btn.config(state=tk.NORMAL if running else tk.DISABLED)
-        self.status_var.set("运行中..." if running else "就绪")
+        self.status_var.set("Running..." if running else "Ready")
         self.status_label.config(foreground="blue" if running else "green")
 
     def should_stop(self):
@@ -3343,7 +3343,7 @@ class GrokRegisterGUI:
 
     def start_registration(self):
         if self.is_running:
-            self.log("[!] 当前已有任务在运行")
+            self.log("[!] A task is already running")
             return
 
         config["email_provider"] = self.email_provider_var.get().strip() or "duckmail"
@@ -3367,12 +3367,12 @@ class GrokRegisterGUI:
             config["cloudflare_path_messages"] = raw_paths[3] if raw_paths[3].startswith("/") else ("/" + raw_paths[3])
         save_config()
         if config["email_provider"] == "cloudflare" and not config["cloudflare_api_base"]:
-            self.log("[!] Cloudflare 模式需要先填写 Cloudflare API Base")
+            self.log("[!] Cloudflare mode requires Cloudflare API Base first")
             return
         try:
             count = int(self.count_var.get())
         except Exception:
-            self.log("[!] 注册数量无效")
+            self.log("[!] Invalid registration count")
             return
         config["register_count"] = count
         save_config()
@@ -3386,8 +3386,8 @@ class GrokRegisterGUI:
         )
         self.update_stats()
         self._set_running_ui(True)
-        self.log(f"[*] 配置已保存，开始执行。目标数量: {count}")
-        self.log(f"[*] 成功账号将实时保存到: {self.accounts_output_file}")
+        self.log(f"[*] Config saved; starting run. Target count: {count}")
+        self.log(f"[*] Successful accounts will be saved in real time to: {self.accounts_output_file}")
         threading.Thread(
             target=self.run_registration,
             args=(count,),
@@ -3396,7 +3396,7 @@ class GrokRegisterGUI:
 
     def stop_registration(self):
         self.stop_requested = True
-        self.log("[!] 用户停止注册")
+        self.log("[!] User stopped registration")
 
     def run_registration(self, count):
         stop_speed = threading.Event()
@@ -3413,13 +3413,13 @@ class GrokRegisterGUI:
         )
         try:
             concurrent = max(1, int(config.get("concurrent_count", 1) or 1))
-            self.log(f"[*] 日志级别: {get_log_level()} | 速度统计间隔: {int(interval)}s")
+            self.log(f"[*] Log level: {get_log_level()} | Speed stats interval: {int(interval)}s")
             if concurrent <= 1:
                 self._run_single_worker(count, worker_id=0)
             else:
                 self._run_concurrent_workers(count, concurrent)
         except Exception as exc:
-            self.log(f"[!] 任务异常: {exc}")
+            self.log(f"[!] Task exception: {exc}")
         finally:
             stop_speed.set()
             try:
@@ -3433,7 +3433,7 @@ class GrokRegisterGUI:
             )
             self._set_running_ui(False)
             self.log(
-                f"[*] 任务结束。成功 {self.success_count} | 失败 {self.fail_count}"
+                f"[*] Task finished. Success {self.success_count} | Failed {self.fail_count}"
             )
 
     def _run_concurrent_workers(self, total_count, worker_count):
@@ -3468,9 +3468,9 @@ class GrokRegisterGUI:
         log_fn = lambda msg: self.log(f"{prefix} {msg}")
         try:
             start_browser(log_callback=log_fn)
-            log_fn(f"[*] Worker-{worker_id} 浏览器已启动")
+            log_fn(f"[*] Worker-{worker_id} Browser started")
         except Exception as e:
-            log_fn(f"[!] Worker-{worker_id} 浏览器启动失败: {e}")
+            log_fn(f"[!] Worker-{worker_id} Browser startup failed: {e}")
             return
         restart_every = int(config.get("browser_restart_every", 10) or 0)
         local_success = 0
@@ -3495,31 +3495,31 @@ class GrokRegisterGUI:
                         retry_count_for_slot += 1
                         if retry_count_for_slot <= max_slot_retry:
                             log_fn(
-                                f"[!] 账号流程卡住，重试第 {retry_count_for_slot}/{max_slot_retry} 次: {exc}"
+                                f"[!] Account flow is stuck; retry {retry_count_for_slot}/{max_slot_retry}: {exc}"
                             )
                             restart_browser(log_callback=log_fn)
                             continue
                         with _stats_lock:
                             self.fail_count += 1
-                        log_fn(f"[-] 当前账号已达到最大重试次数，跳过: {exc}")
+                        log_fn(f"[-] Current account reached max retries; skipping: {exc}")
                         slot_done = True
                     except Exception as exc:
                         with _stats_lock:
                             self.fail_count += 1
-                        log_fn(f"[-] 注册失败: {exc}")
+                        log_fn(f"[-] Registration failed: {exc}")
                         slot_done = True
                     finally:
                         local_attempts += 1
                         self.update_stats()
                         if self.should_stop():
                             break
-                        # 与稳定版/单 worker 一致：每账号完整重启，避免 SSO/TOS 会话残留落到 tos-gate
+                        # Match the stable/single-worker behavior: fully restart after every account to avoid SSO/TOS session residue and tos-gate
                         if _get_browser() is None:
                             start_browser(log_callback=log_fn)
                         else:
                             if restart_every > 0 and local_attempts % restart_every == 0:
                                 log_fn(
-                                    f"[*] Worker-{worker_id} 已处理 {local_attempts} 个账号，周期重启浏览器"
+                                    f"[*] Worker-{worker_id} processed {local_attempts} accounts; periodic browser restart"
                                 )
                             restart_browser(log_callback=log_fn)
                         sleep_with_cancel(1, self.should_stop)
@@ -3533,13 +3533,13 @@ class GrokRegisterGUI:
         mail_ok = False
         max_mail_retry = 3
         for mail_try in range(1, max_mail_retry + 1):
-            log_fn(f"[*] 1. 打开注册页 (尝试 {mail_try}/{max_mail_retry})")
+            log_fn(f"[*] 1. Open registration page (attempt {mail_try}/{max_mail_retry})")
             open_signup_page(log_callback=log_fn, cancel_callback=self.should_stop)
-            log_fn("[*] 2. 创建邮箱并提交")
+            log_fn("[*] 2. Create mailbox and submit")
             email, dev_token = fill_email_and_submit(
                 log_callback=log_fn, cancel_callback=self.should_stop
             )
-            log_fn(f"[*] 邮箱: {email}")
+            log_fn(f"[*] Email: {email}")
             try:
                 with _io_lock:
                     with open(
@@ -3549,7 +3549,7 @@ class GrokRegisterGUI:
                         f.write(f"{email}\t{dev_token}\n")
             except Exception:
                 pass
-            log_fn("[*] 3. 拉取验证码")
+            log_fn("[*] 3. Fetch verification code")
             try:
                 code = fill_code_and_submit(
                     email, dev_token,
@@ -3559,21 +3559,21 @@ class GrokRegisterGUI:
                 break
             except Exception as mail_exc:
                 msg = str(mail_exc)
-                if ("未收到验证码" in msg or "验证码" in msg) and mail_try < max_mail_retry:
-                    log_fn(f"[!] 本邮箱未取到验证码，自动更换新邮箱重试: {msg}")
+                if ("no verification code received" in msg or "verification code" in msg) and mail_try < max_mail_retry:
+                    log_fn(f"[!] No verification code received for this mailbox; switching to a new mailbox and retrying: {msg}")
                     restart_browser(log_callback=log_fn)
                     sleep_with_cancel(1, self.should_stop)
                     continue
                 raise
         if not mail_ok:
-            raise Exception("验证码阶段失败，已达到最大重试次数")
-        log_fn(f"[*] 验证码: {code}")
-        log_fn("[*] 4. 填写资料")
+            raise Exception("Verification-code stage failed after max retries")
+        log_fn(f"[*] Verification code: {code}")
+        log_fn("[*] 4. Fill profile")
         profile = fill_profile_and_submit(
             log_callback=log_fn, cancel_callback=self.should_stop
         )
-        log_fn(f"[*] 资料已填: {profile.get('given_name')} {profile.get('family_name')}")
-        log_fn("[*] 5. 等待 sso cookie")
+        log_fn(f"[*] Profile filled: {profile.get('given_name')} {profile.get('family_name')}")
+        log_fn("[*] 5. Wait for sso cookie")
         sso = wait_for_sso_cookie(
             log_callback=log_fn, cancel_callback=self.should_stop
         )
@@ -3581,7 +3581,7 @@ class GrokRegisterGUI:
         if config.get("cpa_export_enabled", True):
             cpa_async = bool(config.get("cpa_mint_async", True))
             if cpa_async:
-                log_fn("[*] 6. CPA xAI 导出 (异步)")
+                log_fn("[*] 6. CPA xAI export (async)")
                 _cpa_bg_page = None
                 def _cpa_mint_bg():
                     time.sleep(5)
@@ -3591,31 +3591,31 @@ class GrokRegisterGUI:
                             log_callback=log_fn, page=_cpa_bg_page,
                         )
                         if r.get("ok"):
-                            log_fn(f"[+] CPA xAI 导出成功: {r.get('path', '')}")
+                            log_fn(f"[+] CPA xAI export succeeded: {r.get('path', '')}")
                         elif not r.get("skipped"):
-                            log_fn(f"[!] CPA xAI 导出失败: {r.get('error', '未知错误')}")
+                            log_fn(f"[!] CPA xAI export failed: {r.get('error', 'unknown error')}")
                     except Exception as e:
-                        log_fn(f"[!] CPA xAI 导出异常: {e}")
+                        log_fn(f"[!] CPA xAI export exception: {e}")
                 _t = threading.Thread(target=_cpa_mint_bg, daemon=True)
                 _t.start()
                 _track_cpa_async_thread(_t)
             else:
-                log_fn("[*] 6. CPA xAI 导出 (同步)")
+                log_fn("[*] 6. CPA xAI export (sync)")
                 cpa_result = export_cpa_xai_for_account(
                     email, profile.get("password", ""), sso=sso,
                     log_callback=log_fn, page=_cpa_page,
                 )
                 if cpa_result.get("ok"):
-                    log_fn(f"[+] CPA xAI 导出成功: {cpa_result.get('path', '')}")
+                    log_fn(f"[+] CPA xAI export succeeded: {cpa_result.get('path', '')}")
                 elif not cpa_result.get("skipped"):
-                    log_fn(f"[!] CPA xAI 导出失败: {cpa_result.get('error', '未知错误')}")
+                    log_fn(f"[!] CPA xAI export failed: {cpa_result.get('error', 'unknown error')}")
         if config.get("enable_nsfw", True):
-            log_fn("[*] 6. 开启 NSFW")
+            log_fn("[*] 6. Enable NSFW")
             nsfw_ok, nsfw_msg = enable_nsfw_for_token(sso, log_callback=log_fn)
             if nsfw_ok:
-                log_fn(f"[+] NSFW 开启成功: {nsfw_msg}")
+                log_fn(f"[+] NSFW enabled: {nsfw_msg}")
             else:
-                log_fn(f"[!] NSFW 未开启，继续保存账号: {nsfw_msg}")
+                log_fn(f"[!] NSFW not enabled; continuing to save account: {nsfw_msg}")
         with _stats_lock:
             self.results.append({"email": email, "sso": sso, "profile": profile})
         try:
@@ -3624,17 +3624,17 @@ class GrokRegisterGUI:
                 with open(self.accounts_output_file, "a", encoding="utf-8") as f:
                     f.write(line)
         except Exception as file_exc:
-            log_fn(f"[Debug] 保存账号文件失败: {file_exc}")
+            log_fn(f"[Debug] Failed to save account file: {file_exc}")
         add_token_to_grok2api_pools(sso, email=email, log_callback=log_fn)
         add_token_to_token_only_file(sso, log_callback=log_fn)
         with _stats_lock:
             self.success_count += 1
-        log_fn(f"[+] 注册成功: {email}")
+        log_fn(f"[+] Registration succeeded: {email}")
 
     def _run_single_worker(self, count, worker_id=0):
         _set_worker_id(worker_id)
         start_browser(log_callback=self.log)
-        self.log("[*] 浏览器已启动")
+        self.log("[*] Browser started")
         restart_every = int(config.get("browser_restart_every", 10) or 0)
         i = 0
         retry_count_for_slot = 0
@@ -3642,13 +3642,13 @@ class GrokRegisterGUI:
         while i < count:
             if self.should_stop():
                 break
-            self.log(f"--- 开始第 {i + 1}/{count} 个账号 ---")
+            self.log(f"--- Starting account {i + 1}/{count} ---")
             try:
                 self._register_one_account(self.log, worker_id, i)
                 retry_count_for_slot = 0
                 i += 1
                 if restart_every > 0 and i > 0 and i % restart_every == 0:
-                    self.log(f"[*] 已注册 {i} 个账号，重启浏览器")
+                    self.log(f"[*] Registered {i} accounts; restarting browser")
                     restart_browser(log_callback=self.log)
                 if (
                     self.success_count > 0
@@ -3657,19 +3657,19 @@ class GrokRegisterGUI:
                 ):
                     cleanup_runtime_memory(
                         log_callback=self.log,
-                        reason=f"已成功 {self.success_count} 个账号，执行定期清理",
+                        reason=f"{self.success_count} successful accounts; running periodic cleanup",
                     )
             except RegistrationCancelled:
-                self.log("[!] 注册被用户停止")
+                self.log("[!] Registration stopped by user")
                 break
             except AccountRetryNeeded as exc:
                 retry_count_for_slot += 1
                 if retry_count_for_slot <= max_slot_retry:
-                    self.log(f"[!] 当前账号流程卡住，重试第 {retry_count_for_slot}/{max_slot_retry} 次: {exc}")
+                    self.log(f"[!] Account flow is stuck; retry {retry_count_for_slot}/{max_slot_retry}: {exc}")
                 else:
                     with _stats_lock:
                         self.fail_count += 1
-                    self.log(f"[-] 当前账号已达到最大重试次数，跳过: {exc}")
+                    self.log(f"[-] Current account reached max retries; skipping: {exc}")
                     retry_count_for_slot = 0
                     i += 1
             except Exception as exc:
@@ -3677,7 +3677,7 @@ class GrokRegisterGUI:
                     self.fail_count += 1
                 retry_count_for_slot = 0
                 i += 1
-                self.log(f"[-] 注册失败: {exc}")
+                self.log(f"[-] Registration failed: {exc}")
             finally:
                 self.update_stats()
                 if self.should_stop():
@@ -3704,15 +3704,15 @@ class CliStopController:
             self.stop_requested = True
 
     def handle_sigint(self, signum=None, frame=None):
-        """第一次 Ctrl+C 请求优雅停止；第二次强制退出。"""
+        """First Ctrl+C requests graceful stop; second Ctrl+C forces exit."""
         with self._lock:
             self._sigint_count += 1
             count = self._sigint_count
             self.stop_requested = True
         if count == 1:
-            cli_log("[!] 收到 Ctrl+C，正在停止...（再按一次强制退出）")
+            cli_log("[!] Received Ctrl+C; stopping... press again to force exit")
             return
-        cli_log("[!] 再次收到 Ctrl+C，强制退出")
+        cli_log("[!] Received Ctrl+C again; forcing exit")
         try:
             os._exit(1)
         except Exception:
@@ -3727,7 +3727,7 @@ def cli_log(message):
 
 
 def _install_cli_sigint_handler(controller):
-    """安装可重入的 Ctrl+C 处理。Windows/Git Bash 下尽量可用。"""
+    """Install re-entrant Ctrl+C handling; best-effort support on Windows/Git Bash."""
     previous = None
     try:
         import signal
@@ -3760,13 +3760,13 @@ def _register_one_account_cli(log_fn, stop_fn, accounts_output_file):
     mail_ok = False
     max_mail_retry = 3
     for mail_try in range(1, max_mail_retry + 1):
-        log_fn(f"[*] 1. 打开注册页 (尝试 {mail_try}/{max_mail_retry})")
+        log_fn(f"[*] 1. Open registration page (attempt {mail_try}/{max_mail_retry})")
         open_signup_page(log_callback=log_fn, cancel_callback=stop_fn)
-        log_fn("[*] 2. 创建邮箱并提交")
+        log_fn("[*] 2. Create mailbox and submit")
         email, dev_token = fill_email_and_submit(
             log_callback=log_fn, cancel_callback=stop_fn
         )
-        log_fn(f"[*] 邮箱: {email}")
+        log_fn(f"[*] Email: {email}")
         try:
             with _io_lock:
                 with open(
@@ -3776,7 +3776,7 @@ def _register_one_account_cli(log_fn, stop_fn, accounts_output_file):
                     f.write(f"{email}\t{dev_token}\n")
         except Exception:
             pass
-        log_fn("[*] 3. 拉取验证码")
+        log_fn("[*] 3. Fetch verification code")
         try:
             code = fill_code_and_submit(
                 email, dev_token,
@@ -3786,21 +3786,21 @@ def _register_one_account_cli(log_fn, stop_fn, accounts_output_file):
             break
         except Exception as mail_exc:
             msg = str(mail_exc)
-            if ("未收到验证码" in msg or "验证码" in msg) and mail_try < max_mail_retry:
-                log_fn(f"[!] 本邮箱未取到验证码，自动更换新邮箱重试: {msg}")
+            if ("no verification code received" in msg or "verification code" in msg) and mail_try < max_mail_retry:
+                log_fn(f"[!] No verification code received for this mailbox; switching to a new mailbox and retrying: {msg}")
                 restart_browser(log_callback=log_fn)
                 sleep_with_cancel(1, stop_fn)
                 continue
             raise
     if not mail_ok:
-        raise Exception("验证码阶段失败，已达到最大重试次数")
-    log_fn(f"[*] 验证码: {code}")
-    log_fn("[*] 4. 填写资料")
+        raise Exception("Verification-code stage failed after max retries")
+    log_fn(f"[*] Verification code: {code}")
+    log_fn("[*] 4. Fill profile")
     profile = fill_profile_and_submit(
         log_callback=log_fn, cancel_callback=stop_fn
     )
-    log_fn(f"[*] 资料已填: {profile.get('given_name')} {profile.get('family_name')}")
-    log_fn("[*] 5. 等待 sso cookie")
+    log_fn(f"[*] Profile filled: {profile.get('given_name')} {profile.get('family_name')}")
+    log_fn("[*] 5. Wait for sso cookie")
     sso = wait_for_sso_cookie(
         log_callback=log_fn, cancel_callback=stop_fn
     )
@@ -3808,7 +3808,7 @@ def _register_one_account_cli(log_fn, stop_fn, accounts_output_file):
     if config.get("cpa_export_enabled", True):
         cpa_async = bool(config.get("cpa_mint_async", True))
         if cpa_async:
-            log_fn("[*] 6. CPA xAI 导出 (异步)")
+            log_fn("[*] 6. CPA xAI export (async)")
             _cpa_bg_page = None
             def _cpa_mint_bg():
                 time.sleep(5)
@@ -3818,41 +3818,41 @@ def _register_one_account_cli(log_fn, stop_fn, accounts_output_file):
                         log_callback=log_fn, page=_cpa_bg_page,
                     )
                     if r.get("ok"):
-                        log_fn(f"[+] CPA xAI 导出成功: {r.get('path', '')}")
+                        log_fn(f"[+] CPA xAI export succeeded: {r.get('path', '')}")
                     elif not r.get("skipped"):
-                        log_fn(f"[!] CPA xAI 导出失败: {r.get('error', '未知错误')}")
+                        log_fn(f"[!] CPA xAI export failed: {r.get('error', 'unknown error')}")
                 except Exception as e:
-                    log_fn(f"[!] CPA xAI 导出异常: {e}")
+                    log_fn(f"[!] CPA xAI export exception: {e}")
             _t = threading.Thread(target=_cpa_mint_bg, daemon=True)
             _t.start()
             _track_cpa_async_thread(_t)
         else:
-            log_fn("[*] 6. CPA xAI 导出 (同步)")
+            log_fn("[*] 6. CPA xAI export (sync)")
             cpa_result = export_cpa_xai_for_account(
                 email, profile.get("password", ""), sso=sso,
                 log_callback=log_fn, page=_cpa_page,
             )
             if cpa_result.get("ok"):
-                log_fn(f"[+] CPA xAI 导出成功: {cpa_result.get('path', '')}")
+                log_fn(f"[+] CPA xAI export succeeded: {cpa_result.get('path', '')}")
             elif not cpa_result.get("skipped"):
-                log_fn(f"[!] CPA xAI 导出失败: {cpa_result.get('error', '未知错误')}")
+                log_fn(f"[!] CPA xAI export failed: {cpa_result.get('error', 'unknown error')}")
     if config.get("enable_nsfw", True):
-        log_fn("[*] 6. 开启 NSFW")
+        log_fn("[*] 6. Enable NSFW")
         nsfw_ok, nsfw_msg = enable_nsfw_for_token(sso, log_callback=log_fn)
         if nsfw_ok:
-            log_fn(f"[+] NSFW 开启成功: {nsfw_msg}")
+            log_fn(f"[+] NSFW enabled: {nsfw_msg}")
         else:
-            log_fn(f"[!] NSFW 未开启，继续保存账号: {nsfw_msg}")
+            log_fn(f"[!] NSFW not enabled; continuing to save account: {nsfw_msg}")
     try:
         line = f"{email}----{profile.get('password','')}----{sso}\n"
         with _io_lock:
             with open(accounts_output_file, "a", encoding="utf-8") as f:
                 f.write(line)
     except Exception as file_exc:
-        log_fn(f"[Debug] 保存账号文件失败: {file_exc}")
+        log_fn(f"[Debug] Failed to save account file: {file_exc}")
     add_token_to_grok2api_pools(sso, email=email, log_callback=log_fn)
     add_token_to_token_only_file(sso, log_callback=log_fn)
-    log_fn(f"[+] 注册成功: {email}")
+    log_fn(f"[+] Registration succeeded: {email}")
 
 
 def _cli_worker_loop(worker_id, task_queue, total_count, controller, accounts_output_file, stats):
@@ -3861,9 +3861,9 @@ def _cli_worker_loop(worker_id, task_queue, total_count, controller, accounts_ou
     log_fn = lambda msg: cli_log(f"{prefix} {msg}")
     try:
         start_browser(log_callback=log_fn)
-        log_fn(f"[*] Worker-{worker_id} 浏览器已启动")
+        log_fn(f"[*] Worker-{worker_id} Browser started")
     except Exception as e:
-        log_fn(f"[!] Worker-{worker_id} 浏览器启动失败: {e}")
+        log_fn(f"[!] Worker-{worker_id} Browser startup failed: {e}")
         return
     restart_every = int(config.get("browser_restart_every", 10) or 0)
     local_success = 0
@@ -3890,30 +3890,30 @@ def _cli_worker_loop(worker_id, task_queue, total_count, controller, accounts_ou
                     retry_count_for_slot += 1
                     if retry_count_for_slot <= max_slot_retry:
                         log_fn(
-                            f"[!] 账号流程卡住，重试第 {retry_count_for_slot}/{max_slot_retry} 次: {exc}"
+                            f"[!] Account flow is stuck; retry {retry_count_for_slot}/{max_slot_retry}: {exc}"
                         )
                         restart_browser(log_callback=log_fn)
                         continue
                     with stats["lock"]:
                         stats["fail"] += 1
-                    log_fn(f"[-] 当前账号已达到最大重试次数，跳过: {exc}")
+                    log_fn(f"[-] Current account reached max retries; skipping: {exc}")
                     slot_done = True
                 except Exception as exc:
                     with stats["lock"]:
                         stats["fail"] += 1
-                    log_fn(f"[-] 注册失败: {exc}")
+                    log_fn(f"[-] Registration failed: {exc}")
                     slot_done = True
                 finally:
                     local_attempts += 1
                     if controller.should_stop():
                         break
-                    # 与稳定版/单 worker 一致：每账号完整重启，避免 SSO/TOS 会话残留落到 tos-gate
+                    # Match the stable/single-worker behavior: fully restart after every account to avoid SSO/TOS session residue and tos-gate
                     if _get_browser() is None:
                         start_browser(log_callback=log_fn)
                     else:
                         if restart_every > 0 and local_attempts % restart_every == 0:
                             log_fn(
-                                f"[*] Worker-{worker_id} 已处理 {local_attempts} 个账号，周期重启浏览器"
+                                f"[*] Worker-{worker_id} processed {local_attempts} accounts; periodic browser restart"
                             )
                         restart_browser(log_callback=log_fn)
                     sleep_with_cancel(1, controller.should_stop)
@@ -3943,10 +3943,10 @@ def run_registration_cli(count):
         stop_event=stop_speed,
         interval_sec=interval,
     )
-    cli_log(f"[*] 终端模式启动，目标数量: {count}，并发: {worker_count}")
-    cli_log(f"[*] 成功账号将实时保存到: {accounts_output_file}")
-    cli_log(f"[*] 日志级别: {get_log_level()} | 速度统计间隔: {int(interval)}s")
-    cli_log("[*] 按 Ctrl+C 停止（连按两次强制退出）")
+    cli_log(f"[*] CLI mode started, target count: {count}, concurrency: {worker_count}")
+    cli_log(f"[*] Successful accounts will be saved in real time to: {accounts_output_file}")
+    cli_log(f"[*] Log level: {get_log_level()} | Speed stats interval: {int(interval)}s")
+    cli_log("[*] Press Ctrl+C to stop; press twice to force exit")
     try:
         if worker_count > 1:
             import queue
@@ -3964,7 +3964,7 @@ def run_registration_cli(count):
                 )
                 t.start()
                 threads.append(t)
-                # 可中断的启动间隔
+                # Interruptible startup interval
                 sleep_with_cancel(2, controller.should_stop)
             _join_threads_interruptible(
                 threads,
@@ -3973,7 +3973,7 @@ def run_registration_cli(count):
                 poll=0.5,
             )
             if controller.should_stop():
-                cli_log("[!] 已请求停止，等待 worker 收尾...")
+                cli_log("[!] Stop requested; waiting for workers to finish...")
                 _join_threads_interruptible(
                     threads,
                     should_stop=None,
@@ -3982,7 +3982,7 @@ def run_registration_cli(count):
                 )
         else:
             start_browser(log_callback=cli_log)
-            cli_log("[*] 浏览器已启动")
+            cli_log("[*] Browser started")
             restart_every = int(config.get("browser_restart_every", 10) or 0)
             i = 0
             retry_count_for_slot = 0
@@ -3990,16 +3990,16 @@ def run_registration_cli(count):
             while i < count:
                 if controller.should_stop():
                     break
-                cli_log(f"--- 开始第 {i + 1}/{count} 个账号 ---")
+                cli_log(f"--- Starting account {i + 1}/{count} ---")
                 try:
                     _register_one_account_cli(cli_log, controller.should_stop, accounts_output_file)
                     with stats["lock"]:
                         stats["success"] += 1
                     retry_count_for_slot = 0
                     i += 1
-                    cli_log(f"[*] 当前统计: 成功 {stats['success']} | 失败 {stats['fail']}")
+                    cli_log(f"[*] Current stats: Success {stats['success']} | Failed {stats['fail']}")
                     if restart_every > 0 and i > 0 and i % restart_every == 0:
-                        cli_log(f"[*] 已注册 {i} 个账号，重启浏览器")
+                        cli_log(f"[*] Registered {i} accounts; restarting browser")
                         restart_browser(log_callback=cli_log)
                     if (
                         stats["success"] > 0
@@ -4008,29 +4008,29 @@ def run_registration_cli(count):
                     ):
                         cleanup_runtime_memory(
                             log_callback=cli_log,
-                            reason=f"已成功 {stats['success']} 个账号，执行定期清理",
+                            reason=f"{stats['success']} successful accounts; running periodic cleanup",
                         )
                 except RegistrationCancelled:
-                    cli_log("[!] 注册被停止")
+                    cli_log("[!] Registration stopped")
                     break
                 except AccountRetryNeeded as exc:
                     retry_count_for_slot += 1
                     if retry_count_for_slot <= max_slot_retry:
                         cli_log(
-                            f"[!] 当前账号流程卡住，重试第 {retry_count_for_slot}/{max_slot_retry} 次: {exc}"
+                            f"[!] Account flow is stuck; retry {retry_count_for_slot}/{max_slot_retry}: {exc}"
                         )
                     else:
                         with stats["lock"]:
                             stats["fail"] += 1
                         retry_count_for_slot = 0
                         i += 1
-                        cli_log(f"[-] 当前账号已达到最大重试次数，跳过: {exc}")
+                        cli_log(f"[-] Current account reached max retries; skipping: {exc}")
                 except Exception as exc:
                     with stats["lock"]:
                         stats["fail"] += 1
                     retry_count_for_slot = 0
                     i += 1
-                    cli_log(f"[-] 注册失败: {exc}")
+                    cli_log(f"[-] Registration failed: {exc}")
                 finally:
                     if controller.should_stop():
                         break
@@ -4041,9 +4041,9 @@ def run_registration_cli(count):
                     sleep_with_cancel(1, controller.should_stop)
     except KeyboardInterrupt:
         controller.stop()
-        cli_log("[!] 收到 KeyboardInterrupt，正在停止并清理")
+        cli_log("[!] Received KeyboardInterrupt; stopping and cleaning up")
     except Exception as exc:
-        cli_log(f"[!] 任务异常: {exc}")
+        cli_log(f"[!] Task exception: {exc}")
     finally:
         stop_speed.set()
         try:
@@ -4058,28 +4058,28 @@ def run_registration_cli(count):
             skip_if_stopping=(lambda: stopping),
         )
         try:
-            cleanup_runtime_memory(log_callback=cli_log, reason="任务结束")
+            cleanup_runtime_memory(log_callback=cli_log, reason="Task finished")
         except Exception as clean_exc:
-            cli_log(f"[Debug] 结束清理异常: {clean_exc}")
+            cli_log(f"[Debug] Final cleanup exception: {clean_exc}")
         _restore_sigint_handler(prev_handler)
         with stats["lock"]:
             ok, bad = stats["success"], stats["fail"]
-        cli_log(f"[*] 任务结束。成功 {ok} | 失败 {bad}")
+        cli_log(f"[*] Task finished. Success {ok} | Failed {bad}")
 
 
 def main_cli():
     load_config()
     count = int(config.get("register_count", 1) or 1)
-    cli_log("[*] CLI 已加载配置")
-    cli_log(f"[*] 当前邮箱服务商: {config.get('email_provider', 'duckmail')} | 注册数量: {count}")
-    cli_log("[*] 输入 start 后开始；按 Ctrl+C 可强制停止")
+    cli_log("[*] CLI config loaded")
+    cli_log(f"[*] Current email provider: {config.get('email_provider', 'duckmail')} | Registration count: {count}")
+    cli_log("[*] Enter start to begin; press Ctrl+C to force stop")
     try:
         command = input("> ").strip().lower()
     except KeyboardInterrupt:
-        cli_log("[!] 已取消")
+        cli_log("[!] Cancelled")
         return
     if command != "start":
-        cli_log("[!] 未输入 start，已退出")
+        cli_log("[!] start was not entered; exiting")
         return
     run_registration_cli(count)
 

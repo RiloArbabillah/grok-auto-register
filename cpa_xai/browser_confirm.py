@@ -4,18 +4,18 @@ Paths resolve relative to the grok_reg project root (parent of cpa_xai).
 
 Proven flow (2026-07-10, free account):
   1. Open verification_uri_complete (user_code prefilled)
-  2. Click 继续 on device page
-  3. Cookie / 隐私偏好 banner: 全部允许 BEFORE OAuth 允许 (modal blocks consent)
-  4. 使用邮箱登录 → fill email → 下一步
-  5. Wait cf-turnstile-response → fill password → REAL click 登录
-  6. May land /account redirect or device page → 继续
-  7. Consent page /oauth2/device/consent → REAL click exact 允许
+  2. Click Continue on the device page
+  3. Cookie/privacy-preferences banner: click Accept all before OAuth Allow because the modal blocks consent
+  4. Continue with email, fill email, then click Next
+  5. Wait for cf-turnstile-response, fill password, then real-click Sign in
+  6. May land on account redirect or device page; click Continue
+  7. Consent page /oauth2/device/consent: real-click exact Allow
      (by_js click causes Invalid action / empty form action)
-  8. /oauth2/device/done "设备已授权" + token poll SUCCESS
+  8. /oauth2/device/done authorized state plus token poll SUCCESS
 
 Hard rules:
   - Token poll is source of truth
-  - Button match is EXACT text only (允许 ≠ 全部允许)
+  - Button match is exact text only, so OAuth Allow must not match cookie Accept all
   - Cookie modal must be dismissed before consent Allow
   - Consent Allow MUST be a real click, not by_js
   - Prefer headed browser + register turnstilePatch
@@ -592,7 +592,7 @@ def _find_button_exact(page: Any, label: str) -> Any | None:
 
 
 def _cookie_banner_visible(text: str) -> bool:
-    """Strong signals only — avoid false-positive on 隐私政策 / ToS links."""
+    """Strong signals only; avoid false positives on privacy-policy or ToS links."""
     t = text or ""
     tl = t.lower()
     strong = (
@@ -614,14 +614,14 @@ def _cookie_banner_visible(text: str) -> bool:
 def _dismiss_cookie_banner(page: Any, log: LogFn) -> bool:
     """Dismiss xAI/OneTrust-style cookie/privacy modal so consent Allow is clickable.
 
-    Prefer 全部允许 (Accept all). Never click bare 允许 here — that is OAuth consent.
+    Prefer Accept all. Never click bare OAuth Allow here; that is OAuth consent.
     Returns True if a dismiss action was attempted/succeeded.
     """
     text = _visible_text(page)
     if not _cookie_banner_visible(text):
         return False
 
-    # Exact labels only — 允许 alone is OAuth, not cookie
+    # Exact labels only; OAuth Allow alone is not a cookie action
     labels = [
         "全部允许",
         "接受所有",
@@ -664,7 +664,7 @@ return '';
     except Exception as e:
         log(f"cookie banner JS dismiss failed: {e}")
 
-    # last resort: 全部拒绝 also clears the overlay
+    # Last resort: Reject all also clears the overlay
     hit = _click_exact(page, ["全部拒绝", "Reject all", "Reject All", "Decline"], log, real=False)
     if hit:
         log(f"cookie banner dismissed via reject {hit!r}")
@@ -977,19 +977,19 @@ def approve_device_code(
             phase = "device"
             continue
 
-        # Cookie / privacy modal first (blocks OAuth 允许 on consent page)
+        # Cookie/privacy modal first; it blocks OAuth consent on the consent page
         if _cookie_banner_visible(text):
             if _dismiss_cookie_banner(page, log):
                 _sleep(0.6)
                 continue
-            # Modal still up: never click OAuth 允许 under the overlay
+            # Modal still up: never click OAuth Allow under the overlay
             if "隐私偏好" in text or "全部允许" in text:
                 if "/consent" in url or "授权 Grok Build" in text or "Authorize Grok Build" in text:
                     log("consent blocked by cookie banner — retry dismiss")
                     _sleep(0.8)
                     continue
 
-        # Consent page — REAL click exact 允许 (never 全部允许)
+        # Consent page: real-click exact OAuth Allow, never cookie Accept all
         if "/consent" in url or "授权 Grok Build" in text or "Authorize Grok Build" in text:
             phase = "consent"
             # double-check banner cleared this frame
