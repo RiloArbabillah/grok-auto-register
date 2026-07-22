@@ -5,10 +5,8 @@ services:
     image: grok-register:local
     container_name: grok-register
     init: true
-    stdin_open: true
-    tty: true
     shm_size: "2gb"
     volumes:
       - .:/app
     working_dir: /app
-    command: ["xvfb-run", "-a", "python", "grok_register_ttk.py", "cli"]
+    command: ["sleep", "infinity"]

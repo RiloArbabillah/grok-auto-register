@@ -162,11 +162,17 @@ Enter `start` at the prompt. Press `Ctrl+C` to request cancellation and cleanup.
 
 ### Docker
 
-Build the image and start the interactive CLI:
+Build the image and start the persistent container:
 
 ```bash
 docker compose build
-docker compose run --rm grok-register
+docker compose up -d
+```
+
+Start the interactive CLI inside the running container:
+
+```bash
+docker compose exec grok-register xvfb-run -a python grok_register_ttk.py cli
 ```
 
 The project directory is mounted at `/app`, so `config.json`, account output,
