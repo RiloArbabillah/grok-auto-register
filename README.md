@@ -111,6 +111,13 @@ Common options:
 | `grok2api_auto_add_remote` | Whether to write to a remote grok2api service |
 | `grok2api_remote_base` | Remote grok2api URL, either the site root or the `/admin/api` management API URL |
 | `grok2api_remote_app_key` | Remote grok2api app key |
+| `sub2api_auto_import` | Whether to create or update a Sub2API account after a CPA file is written |
+| `sub2api_base_url` | Sub2API site root, without `/api/v1/admin` |
+| `sub2api_admin_api_key` | Sub2API admin API key sent through `x-api-key` |
+| `sub2api_group_ids` | Group IDs assigned when creating a new Sub2API account |
+| `sub2api_concurrency` | Concurrency assigned when creating a new Sub2API account |
+| `sub2api_priority` | Priority assigned when creating a new Sub2API account |
+| `sub2api_timeout_sec` | Timeout for each Sub2API admin request |
 | `concurrent_count` | Number of concurrent workers; `1` runs sequentially in one browser, `>1` runs multiple browsers concurrently |
 | `browser_restart_every` | Extra periodic restart notice interval in accounts; the browser still fully restarts after every account to avoid session residue |
 | `cpa_export_enabled` | Whether to export CPA xAI credentials after successful registration |
@@ -195,6 +202,42 @@ Or:
 The program tries `/tokens/add` first and is compatible with `/admin/api/tokens/add`. Legacy full-save endpoints are also supported through `/tokens` and `/admin/api/tokens`.
 
 `config.json` contains personal settings and secrets. Do not commit it to Git.
+
+### Sub2API CPA Import
+
+Sub2API connection settings and secrets are read only from `config.json`:
+
+```json
+{
+  "sub2api_auto_import": false,
+  "sub2api_base_url": "https://your-sub2api-domain",
+  "sub2api_admin_api_key": "your-admin-api-key",
+  "sub2api_group_ids": [5],
+  "sub2api_concurrency": 1,
+  "sub2api_priority": 1,
+  "sub2api_timeout_sec": 30
+}
+```
+
+Keep `sub2api_auto_import` disabled while validating a CPA file. The default command is a redacted dry run and does not contact Sub2API:
+
+```bash
+python3 sub2api_admin.py import-cpa cpa_auths/xai-user@example.com.json
+```
+
+Apply the import after checking the payload:
+
+```bash
+python3 sub2api_admin.py import-cpa cpa_auths/xai-user@example.com.json --apply
+```
+
+List detected Grok accounts:
+
+```bash
+python3 sub2api_admin.py list-grok
+```
+
+Imports are upserts. A matching account receives merged credentials only, preserving its existing groups, concurrency, priority, status, and metadata. Ambiguous duplicate matches stop without changing any account.
 
 ## Running
 
@@ -296,6 +339,7 @@ The GUI count control may have an upper limit. CLI mode reads `register_count` d
 |-- grok_register_ttk.py   # Main program for GUI/CLI registration
 |-- cpa_export.py          # CPA xAI export entry point
 |-- cpa_xai/               # CPA mint / OAuth / schema
+|-- sub2api_admin.py       # Sub2API CPA import and admin CLI
 |-- cf_mail_debug.py       # Cloudflare email debug tool
 |-- config.example.json    # Example configuration
 |-- requirements.txt       # Python dependencies

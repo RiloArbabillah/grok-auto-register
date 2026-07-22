@@ -210,6 +210,31 @@ def export_cpa_xai_for_account(
             log(f"[cpa] server upload failed: {e}")
             result["upload_error"] = str(e)
 
+    if result.get("ok") and result.get("path"):
+        if cfg.get("sub2api_auto_import", False):
+            try:
+                from sub2api_admin import sync_cpa_account
+
+                sub2api_result = sync_cpa_account(result["path"], cfg)
+                result["sub2api_import"] = sub2api_result
+                log(
+                    f"[cpa] Sub2API {sub2api_result.get('action')}: "
+                    f"account_id={sub2api_result.get('account_id')}"
+                )
+            except Exception as e:  # noqa: BLE001
+                result["sub2api_import"] = {
+                    "ok": False,
+                    "action": "error",
+                    "error": str(e),
+                }
+                log(f"[cpa] Sub2API import failed: {e}")
+        else:
+            result["sub2api_import"] = {
+                "ok": False,
+                "action": "skipped",
+                "reason": "disabled",
+            }
+
     # failure log under register dir
     if not result.get("ok"):
         fail_path = out_dir / "cpa_auth_failed.txt"
