@@ -8,7 +8,16 @@ import urllib.request
 from typing import Any
 
 from .proxyutil import resolve_proxy
-from .schema import DEFAULT_BASE_URL, DEFAULT_CLIENT_HEADERS
+from .schema import DEFAULT_BASE_URL
+
+
+DEFAULT_CLIENT_HEADERS = {
+    "x-grok-client-version": "0.2.93",
+    "x-xai-token-auth": "xai-grok-cli",
+    "x-authenticateresponse": "authenticate-response",
+    "x-grok-client-identifier": "grok-shell",
+    "User-Agent": "grok-shell/0.2.93 (linux; x86_64)",
+}
 
 
 def _opener(proxy: str | None = None) -> urllib.request.OpenerDirector:

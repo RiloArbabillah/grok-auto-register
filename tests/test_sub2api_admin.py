@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import cpa_export
+import app_config
 import sub2api_admin
 
 
@@ -39,6 +40,19 @@ class FakeClient:
     def update_credentials(self, account_id, credentials):
         self.updated.append((account_id, credentials))
         return {"data": {"id": account_id}}
+
+
+class Sub2APIConfigTests(unittest.TestCase):
+    def test_upstream_config_schema_includes_sub2api_defaults(self):
+        config = app_config.validate_config_structure({})
+
+        self.assertFalse(config["sub2api_auto_import"])
+        self.assertTrue(config["sub2api_preflight_enabled"])
+        self.assertEqual(config["sub2api_group_ids"], [5])
+
+    def test_enabled_auto_import_requires_url_and_admin_key(self):
+        with self.assertRaises(app_config.ConfigError):
+            app_config.validate_run_requirements({"sub2api_auto_import": True})
 
 
 class Sub2APIAdminTests(unittest.TestCase):

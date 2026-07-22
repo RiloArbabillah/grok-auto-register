@@ -1,50 +1,51 @@
-"""Atomic write of CPA xAI auth files (mode 0600)."""
-
-from __future__ import annotations
+"""将 CPA xAI 凭证安全写入本地 JSON 文件。"""
 
 import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from .schema import credential_file_name
 
 
-def write_cpa_xai_auth(
-    auth_dir: str | Path,
-    payload: dict[str, Any],
-    *,
-    filename: str | None = None,
-) -> Path:
-    """Write payload to auth_dir/xai-<email>.json atomically. Returns final path."""
-    auth_dir = Path(auth_dir).expanduser().resolve()
-    auth_dir.mkdir(parents=True, exist_ok=True)
-
-    if not filename:
-        filename = credential_file_name(
-            str(payload.get("email") or ""),
-            str(payload.get("sub") or ""),
-        )
-    if not filename.endswith(".json"):
-        filename = filename + ".json"
-
-    dest = auth_dir / filename
-    data = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-
-    fd, tmp_name = tempfile.mkstemp(prefix=".xai-", suffix=".tmp", dir=str(auth_dir))
+def _is_relative_to(path, root):
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        os.chmod(tmp_name, 0o600)
-        os.replace(tmp_name, dest)
-        os.chmod(dest, 0o600)
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def write_cpa_xai_auth(auth_dir, payload, filename=None):
+    root = Path(auth_dir).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    target_name = filename or credential_file_name(payload.get("email", ""), payload.get("sub", ""))
+    target_name = Path(str(target_name)).name
+    if not str(target_name).endswith(".json"):
+        target_name = str(target_name) + ".json"
+    destination = (root / str(target_name)).resolve()
+    if not _is_relative_to(destination, root):
+        raise ValueError("CPA auth filename must stay inside auth_dir")
+    data = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    file_descriptor, temp_name = tempfile.mkstemp(prefix=".xai-", suffix=".tmp", dir=str(root))
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.chmod(temp_name, 0o600)
+        except Exception:
+            pass
+        os.replace(temp_name, str(destination))
+        try:
+            os.chmod(str(destination), 0o600)
+        except Exception:
+            pass
     finally:
-        if os.path.exists(tmp_name):
+        if os.path.exists(temp_name):
             try:
-                os.unlink(tmp_name)
+                os.unlink(temp_name)
             except OSError:
                 pass
-    return dest
+    return destination

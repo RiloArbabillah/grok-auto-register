@@ -1,41 +1,92 @@
-"""Register-machine hook: mint CPA xai auth after successful registration.
-
-OIDC package lives at ./cpa_xai (bundled with this project).
-Optional override: config `api_reverse_tools` / env `API_REVERSE_TOOLS`
-points at a directory that *contains* the `cpa_xai` package.
-"""
-
-from __future__ import annotations
-
+"""在注册成功后可选生成 CPA xAI OIDC 凭证并复制到热加载目录。"""
+from dataclasses import dataclass
+import importlib.util
 import os
 import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Optional
 
-_REG_DIR = Path(__file__).resolve().parent
-_DEFAULT_OUT = _REG_DIR / "cpa_auths"
-_DEFAULT_CPA = Path("")  # empty = do not assume a machine-local CPA path
-
-
-def _ensure_cpa_xai_on_path(tools_dir: str | Path | None = None) -> Path:
-    """Put the parent of `cpa_xai` on sys.path. Default: this project root."""
-    if tools_dir:
-        tools = Path(tools_dir).expanduser().resolve()
-    else:
-        env = (os.environ.get("API_REVERSE_TOOLS") or "").strip()
-        tools = Path(env).expanduser().resolve() if env else _REG_DIR
-    # If user pointed at .../cpa_xai itself, use its parent
-    if tools.name == "cpa_xai" and (tools / "__init__.py").is_file():
-        tools = tools.parent
-    if str(tools) not in sys.path:
-        sys.path.insert(0, str(tools))
-    return tools
+_ROOT = Path(__file__).resolve().parent
+_DEFAULT_AUTH_DIR = _ROOT / "cpa_auths"
 
 
-def export_cookies_from_page(page: Any) -> list[dict]:
-    """Best-effort export of cookies from a DrissionPage tab/browser."""
+@dataclass(frozen=True)
+class CpaExportSettings:
+    enabled: bool
+    auth_dir: Path
+    hotload_dir: Optional[Path]
+    copy_to_hotload: bool
+    proxy: str
+    headless: bool
+    mint_timeout: float
+    request_timeout: float
+    poll_timeout: float
+    base_url: str
+    force_standalone: bool
+    cookie_inject: bool
+    tools_dir: str
+
+    @classmethod
+    def from_config(cls, config):
+        cfg = dict(config or {})
+        auth_dir = Path(cfg.get("cpa_auth_dir") or _DEFAULT_AUTH_DIR).expanduser()
+        if not auth_dir.is_absolute():
+            auth_dir = (_ROOT / auth_dir).resolve()
+        hotload_value = str(cfg.get("cpa_hotload_dir") or "").strip()
+        hotload_dir = Path(hotload_value).expanduser() if hotload_value else None
+        if hotload_dir is not None and not hotload_dir.is_absolute():
+            hotload_dir = (_ROOT / hotload_dir).resolve()
+        return cls(
+            enabled=bool(cfg.get("cpa_export_enabled", True)),
+            auth_dir=auth_dir,
+            hotload_dir=hotload_dir,
+            copy_to_hotload=bool(cfg.get("cpa_copy_to_hotload", False)),
+            proxy=str(cfg.get("cpa_proxy") or cfg.get("proxy") or "").strip(),
+            headless=bool(cfg.get("cpa_headless", False)),
+            mint_timeout=float(cfg.get("cpa_mint_timeout_sec") or 300),
+            request_timeout=float(cfg.get("cpa_oidc_request_timeout_sec") or 15),
+            poll_timeout=float(cfg.get("cpa_oidc_poll_timeout_sec") or 15),
+            base_url=str(cfg.get("cpa_base_url") or "https://cli-chat-proxy.grok.com/v1").strip(),
+            force_standalone=bool(cfg.get("cpa_force_standalone", True)),
+            cookie_inject=bool(cfg.get("cpa_mint_cookie_inject", True)),
+            tools_dir=str(cfg.get("api_reverse_tools") or "").strip(),
+        )
+
+
+def _load_mint_and_export(tools_dir=""):
+    tools_value = str(tools_dir or "").strip()
+    if not tools_value:
+        from cpa_xai import mint_and_export
+        return mint_and_export
+    tools = Path(tools_value).expanduser().resolve()
+    package = tools if tools.name == "cpa_xai" else tools / "cpa_xai"
+    init_path = package / "__init__.py"
+    if package.resolve() == (_ROOT / "cpa_xai").resolve():
+        from cpa_xai import mint_and_export
+        return mint_and_export
+    if not init_path.is_file():
+        raise ImportError("cpa_xai package not found under %s" % tools)
+    module_name = "_external_cpa_xai_%s" % abs(hash(str(package)))
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        str(init_path),
+        submodule_search_locations=[str(package)],
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError("unable to load cpa_xai from %s" % package)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    return module.mint_and_export
+
+
+def export_cookies_from_page(page):
     if page is None:
         return []
     cookies = None
@@ -59,220 +110,130 @@ def export_cookies_from_page(page: Any) -> list[dict]:
                 cookies = browser.cookies()
         except Exception:
             cookies = None
-    if isinstance(cookies, list):
-        return [c for c in cookies if isinstance(c, dict)]
-    return []
+    return [item for item in cookies if isinstance(item, dict)] if isinstance(cookies, list) else []
 
 
-def export_cpa_xai_for_account(
-    email: str,
-    password: str,
-    *,
-    page: Any | None = None,
-    cookies: Any | None = None,
-    sso: str | None = None,
-    config: dict | None = None,
-    log_callback: Callable[[str], None] | None = None,
-) -> dict:
-    """Mint OIDC + write xai-<email>.json under register cpa_auths (and optional CPA auth-dir)."""
-    cfg = config or {}
-    log = log_callback or (lambda m: print(m, flush=True))
+def _normalize_result(result, email=""):
+    value = dict(result or {})
+    value.setdefault("ok", False)
+    value.setdefault("skipped", False)
+    value.setdefault("email", str(email or ""))
+    value.setdefault("error", None)
+    return value
 
-    if not cfg.get("cpa_export_enabled", True):
-        log("[cpa] export disabled")
-        return {"ok": False, "skipped": True, "reason": "disabled"}
 
-    tools_dir = cfg.get("api_reverse_tools") or cfg.get("cpa_xai_parent") or None
-    _ensure_cpa_xai_on_path(tools_dir)
-
+def _sync_sub2api_before_distribution(result, config, log):
+    if not config.get("sub2api_auto_import", False):
+        result["sub2api_import"] = {
+            "ok": False, "action": "skipped", "reason": "disabled",
+        }
+        return True
     try:
-        from cpa_xai import mint_and_export  # type: ignore
-    except Exception as e:  # noqa: BLE001
-        log(f"[cpa] import cpa_xai failed: {e}")
-        return {"ok": False, "error": f"import: {e}"}
+        from sub2api_admin import sync_cpa_account
+        sub2api_result = sync_cpa_account(result["path"], config)
+    except Exception as exc:
+        result["sub2api_import"] = {
+            "ok": False, "action": "error", "error": str(exc),
+        }
+        log("[cpa] Sub2API import failed: %s" % exc)
+        return True
 
-    out_dir = Path(cfg.get("cpa_auth_dir") or _DEFAULT_OUT).expanduser()
-    if not out_dir.is_absolute():
-        out_dir = (_REG_DIR / out_dir).resolve()
+    result["sub2api_import"] = sub2api_result
+    preflight = sub2api_result.get("preflight") or {}
+    if (
+        sub2api_result.get("action") == "skipped"
+        and sub2api_result.get("reason") == "preflight_rejected"
+    ):
+        rejected_path = sub2api_result.get("rejected_path")
+        result["rejected_path"] = rejected_path
+        result["path"] = rejected_path
+        log(
+            "[cpa] Sub2API skipped: preflight rejected state=%s status=%s code=%s rejected=%s"
+            % (
+                preflight.get("state"), preflight.get("status_code"),
+                preflight.get("code", ""), rejected_path,
+            )
+        )
+        return False
 
-    hotload_raw = (cfg.get("cpa_hotload_dir") or "").strip()
-    cpa_dir = Path(hotload_raw).expanduser() if hotload_raw else None
-    if cpa_dir and not cpa_dir.is_absolute():
-        cpa_dir = (_REG_DIR / cpa_dir).resolve()
-
-    # Priority: cpa_proxy > proxy > env. Config must beat shell https_proxy.
-    proxy = (cfg.get("cpa_proxy") or cfg.get("proxy") or "").strip()
-    if not proxy:
-        proxy = (
-            os.environ.get("https_proxy")
-            or os.environ.get("HTTPS_PROXY")
-            or os.environ.get("http_proxy")
-            or ""
-        ).strip()
-    # Default headed: headless is frequently Cloudflare-blocked on accounts.x.ai
-    headless = bool(cfg.get("cpa_headless", False))
-    probe = bool(cfg.get("cpa_probe_after_write", False))
-    probe_chat = bool(cfg.get("cpa_probe_chat", False))
-    timeout = float(cfg.get("cpa_mint_timeout_sec", 240))
-    base_url = cfg.get("cpa_base_url") or "https://cli-chat-proxy.grok.com/v1"
-    cpa_headers = cfg.get("cpa_headers") or None
-    force_standalone = bool(cfg.get("cpa_force_standalone", False))
-    cookie_inject = bool(cfg.get("cpa_mint_cookie_inject", True))
-    reuse_browser = bool(cfg.get("cpa_mint_browser_reuse", True))
-    recycle_every = int(cfg.get("cpa_mint_browser_recycle_every", 15) or 0)
-
-    reuse_page = None if force_standalone else page
-
-    # cookies: explicit arg > page export > none
-    # When reusing registration browser, skip cookie injection (already logged in)
-    use_cookies = None
-    if reuse_page is None:
-        use_cookies = cookies
-        if use_cookies is None and cookie_inject and page is not None:
-            use_cookies = export_cookies_from_page(page)
-        if not cookie_inject:
-            use_cookies = None
-        else:
-            sso_val = (sso or "").strip()
-            if not sso_val and isinstance(use_cookies, list):
-                for c in use_cookies:
-                    if isinstance(c, dict) and c.get("name") in ("sso", "sso-rw") and c.get("value"):
-                        sso_val = str(c.get("value"))
-                        break
-            if sso_val:
-                base = list(use_cookies) if isinstance(use_cookies, list) else []
-                for name in ("sso", "sso-rw"):
-                    for dom in (".x.ai", "accounts.x.ai", ".accounts.x.ai", "grok.com", ".grok.com"):
-                        base.append({
-                            "name": name,
-                            "value": sso_val,
-                            "domain": dom,
-                            "path": "/",
-                            "secure": True,
-                            "httpOnly": True,
-                        })
-                use_cookies = base
-
-    out_dir.mkdir(parents=True, exist_ok=True)
+    readiness = sub2api_result.get("readiness") or {}
     log(
-        f"[cpa] mint OIDC for {email} -> {out_dir} proxy={proxy or '(none)'} "
-        f"cookies={len(use_cookies) if isinstance(use_cookies, list) else (1 if use_cookies else 0)} "
-        f"reuse={reuse_browser}"
+        "[cpa] Sub2API %s: account_id=%s preflight=%s readiness=%s status=%s"
+        % (
+            sub2api_result.get("action"), sub2api_result.get("account_id"),
+            preflight.get("state", "unknown"), readiness.get("state", "unknown"),
+            readiness.get("status_code"),
+        )
     )
+    return True
 
-    def _log(msg: str) -> None:
-        log(f"[cpa] {msg}")
 
+def export_cpa_xai_for_account(email, password, page=None, cookies=None, sso=None,
+                               config=None, log_callback=None, cancel_callback=None):
+    settings = CpaExportSettings.from_config(config)
+    log = log_callback or (lambda message: None)
+    if not settings.enabled:
+        return _normalize_result({"ok": False, "skipped": True, "reason": "disabled"}, email)
+    try:
+        mint_and_export = _load_mint_and_export(settings.tools_dir)
+    except Exception as exc:
+        log("[cpa] import cpa_xai failed: %s" % exc)
+        return _normalize_result({"ok": False, "error": "import: %s" % exc}, email)
+
+    use_cookies = cookies
+    if use_cookies is None and settings.cookie_inject and page is not None:
+        use_cookies = export_cookies_from_page(page)
+    if not settings.cookie_inject:
+        use_cookies = None
+    elif sso:
+        base = list(use_cookies) if isinstance(use_cookies, list) else []
+        sso_value = str(sso).strip()
+        for cookie_name in ("sso", "sso-rw"):
+            for domain in (".x.ai", "accounts.x.ai", ".accounts.x.ai", "auth.x.ai", ".auth.x.ai", "grok.com", ".grok.com"):
+                base.append({"name": cookie_name, "value": sso_value, "domain": domain,
+                             "path": "/", "secure": True, "httpOnly": True})
+        use_cookies = base
+
+    settings.auth_dir.mkdir(parents=True, exist_ok=True)
+    log("[cpa] mint OIDC for %s -> %s" % (email, settings.auth_dir))
     result = mint_and_export(
-        email=email,
-        password=password,
-        auth_dir=out_dir,
-        page=reuse_page,
-        proxy=proxy or None,
-        headless=headless,
-        base_url=base_url,
-        headers=cpa_headers,
-        probe=probe,
-        probe_chat=probe_chat,
-        browser_timeout_sec=timeout,
-        force_standalone=force_standalone,
-        cookies=use_cookies,
-        reuse_browser=reuse_browser,
-        recycle_every=recycle_every,
-        log=_log,
+        email=email, password=password, auth_dir=settings.auth_dir,
+        page=None if settings.force_standalone else page,
+        proxy=settings.proxy or None, headless=settings.headless,
+        base_url=settings.base_url, browser_timeout_sec=settings.mint_timeout,
+        force_standalone=settings.force_standalone, cookies=use_cookies,
+        reuse_browser=True, recycle_every=15,
+        log=lambda message: log("[cpa] %s" % message), cancel=cancel_callback,
+        request_timeout_sec=settings.request_timeout,
+        poll_timeout_sec=settings.poll_timeout,
     )
-
-    # Navigate registration browser back to blank after reuse
-    if reuse_page is not None:
-        try:
-            reuse_page.get("about:blank")
-        except Exception:
-            pass
-
+    result = _normalize_result(result, email)
     allow_distribution = True
     if result.get("ok") and result.get("path"):
-        if cfg.get("sub2api_auto_import", False):
+        allow_distribution = _sync_sub2api_before_distribution(result, config or {}, log)
+    if (allow_distribution and result.get("ok") and result.get("path")
+            and settings.copy_to_hotload and settings.hotload_dir):
+        try:
+            settings.hotload_dir.mkdir(parents=True, exist_ok=True)
+            source = Path(result["path"])
+            target = settings.hotload_dir / source.name
+            shutil.copy2(str(source), str(target))
             try:
-                from sub2api_admin import sync_cpa_account
-
-                sub2api_result = sync_cpa_account(result["path"], cfg)
-                result["sub2api_import"] = sub2api_result
-                preflight = sub2api_result.get("preflight") or {}
-                if (
-                    sub2api_result.get("action") == "skipped"
-                    and sub2api_result.get("reason") == "preflight_rejected"
-                ):
-                    allow_distribution = False
-                    result["rejected_path"] = sub2api_result.get("rejected_path")
-                    result["path"] = sub2api_result.get("rejected_path")
-                    log(
-                        f"[cpa] Sub2API skipped: preflight rejected "
-                        f"state={preflight.get('state')} "
-                        f"status={preflight.get('status_code')} "
-                        f"code={preflight.get('code', '')} "
-                        f"rejected={result.get('rejected_path')}"
-                    )
-                else:
-                    readiness = sub2api_result.get("readiness") or {}
-                    log(
-                        f"[cpa] Sub2API {sub2api_result.get('action')}: "
-                        f"account_id={sub2api_result.get('account_id')} "
-                        f"preflight={preflight.get('state', 'unknown')} "
-                        f"readiness={readiness.get('state', 'unknown')} "
-                        f"status={readiness.get('status_code')}"
-                    )
-            except Exception as e:  # noqa: BLE001
-                result["sub2api_import"] = {
-                    "ok": False,
-                    "action": "error",
-                    "error": str(e),
-                }
-                log(f"[cpa] Sub2API import failed: {e}")
-        else:
-            result["sub2api_import"] = {
-                "ok": False,
-                "action": "skipped",
-                "reason": "disabled",
-            }
-
-    if (
-        allow_distribution
-        and result.get("ok")
-        and result.get("path")
-        and cfg.get("cpa_copy_to_hotload", False)
-        and cpa_dir
-    ):
-        try:
-            cpa_dir.mkdir(parents=True, exist_ok=True)
-            src = Path(result["path"])
-            dst = cpa_dir / src.name
-            shutil.copy2(src, dst)
-            os.chmod(dst, 0o600)
-            result["cpa_path"] = str(dst)
-            log(f"[cpa] hotload copy -> {dst}")
-        except Exception as e:  # noqa: BLE001
-            log(f"[cpa] hotload copy failed: {e}")
-            result["cpa_copy_error"] = str(e)
-
-    if (
-        allow_distribution
-        and result.get("ok")
-        and result.get("path")
-        and cfg.get("cpa_server_host")
-    ):
-        try:
-            from grok_register_ttk import upload_to_cpa_server
-            upload_to_cpa_server(result["path"], log_callback=log)
-        except Exception as e:  # noqa: BLE001
-            log(f"[cpa] server upload failed: {e}")
-            result["upload_error"] = str(e)
-
-    # failure log under register dir
+                os.chmod(str(target), 0o600)
+            except Exception:
+                pass
+            result["hotload_path"] = str(target)
+            log("[cpa] hotload copy -> %s" % target)
+        except Exception as exc:
+            result["cpa_copy_error"] = str(exc)
+            result["warning"] = True
+            result["partial"] = True
+            log("[cpa] hotload copy failed: %s" % exc)
     if not result.get("ok"):
-        fail_path = out_dir / "cpa_auth_failed.txt"
-        with open(fail_path, "a", encoding="utf-8") as f:
-            f.write(f"{email}----{result.get('error') or 'unknown'}----{int(time.time())}\n")
-        if cfg.get("cpa_mint_required", False):
-            raise RuntimeError(f"CPA mint required but failed: {result.get('error')}")
-
+        fail_path = settings.auth_dir / "cpa_auth_failed.txt"
+        try:
+            with open(str(fail_path), "a", encoding="utf-8") as handle:
+                handle.write("%s----%s----%s\n" % (email, result.get("error") or "unknown", int(time.time())))
+        except Exception as exc:
+            log("[cpa] failed to persist failure record: %s" % exc)
     return result

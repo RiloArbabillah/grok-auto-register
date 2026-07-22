@@ -1,299 +1,328 @@
-"""xAI OAuth device-code grant (Grok CLI / CPA client).
-
-Endpoints from https://auth.x.ai/.well-known/openid-configuration
-"""
-
-from __future__ import annotations
+"""实现 OAuth Device Authorization 的发现、启动和 token 轮询。"""
 
 import json
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
-from typing import Any, Callable
 
 from .proxyutil import resolve_proxy
 
-# Keep in sync with CLIProxyAPI internal/auth/xai/types.go
+
 CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
 ISSUER = "https://auth.x.ai"
-DEVICE_CODE_URL = "https://auth.x.ai/oauth2/device/code"
-TOKEN_URL = "https://auth.x.ai/oauth2/token"
+DISCOVERY_URL = ISSUER + "/.well-known/openid-configuration"
 SCOPE = "openid profile email offline_access grok-cli:access api:access"
-
-LogFn = Callable[[str], None]
-
-
-def _noop_log(_: str) -> None:
-    return None
-
-
-def _proxy_handler(proxy: str | None = None) -> urllib.request.ProxyHandler | None:
-    p = resolve_proxy(proxy)
-    if not p:
-        return None
-    return urllib.request.ProxyHandler({"http": p, "https": p})
-
-
-def _opener(proxy: str | None = None) -> urllib.request.OpenerDirector:
-    handlers: list[Any] = []
-    ph = _proxy_handler(proxy)
-    if ph is not None:
-        handlers.append(ph)
-    return urllib.request.build_opener(*handlers) if handlers else urllib.request.build_opener()
-
-
-def _is_transient_net_error(exc: BaseException) -> bool:
-    """Proxy/TLS blips that should not kill an already-approved device flow."""
-    if isinstance(exc, (TimeoutError, BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError)):
-        return True
-    if isinstance(exc, urllib.error.URLError):
-        reason = getattr(exc, "reason", None)
-        if isinstance(reason, BaseException) and _is_transient_net_error(reason):
-            return True
-        msg = str(exc).lower()
-        needles = (
-            "broken pipe",
-            "connection reset",
-            "connection aborted",
-            "timed out",
-            "timeout",
-            "temporarily unavailable",
-            "network is unreachable",
-            "name or service not known",
-            "unexpected_eof",
-            "eof occurred",
-            "ssl",
-            "handshake",
-            "remote end closed",
-            "bad gateway",
-            "connection refused",
-        )
-        return any(n in msg for n in needles)
-    # ssl.SSLError and generic OSError (errno 32 Broken pipe, 104 reset, etc.)
-    try:
-        import ssl
-
-        if isinstance(exc, ssl.SSLError):
-            return True
-    except Exception:
-        pass
-    if isinstance(exc, OSError):
-        if getattr(exc, "errno", None) in {32, 104, 110, 111, 113, 101}:
-            return True
-        msg = str(exc).lower()
-        return any(n in msg for n in ("broken pipe", "timed out", "connection reset", "ssl"))
-    return False
-
-
-def _post_form(
-    url: str,
-    form: dict[str, str],
-    timeout: float = 30.0,
-    *,
-    proxy: str | None = None,
-    retries: int = 0,
-    retry_sleep: float = 1.5,
-) -> tuple[int, dict[str, Any] | str]:
-    data = urllib.parse.urlencode(form).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method="POST",
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "User-Agent": "grok-reg-cpa-xai-minter/1.0",
-        },
-    )
-    last: BaseException | None = None
-    attempts = max(int(retries), 0) + 1
-    for i in range(attempts):
-        opener = _opener(proxy)
-        try:
-            with opener.open(req, timeout=timeout) as resp:
-                body = resp.read().decode("utf-8", errors="replace")
-                status = getattr(resp, "status", 200) or 200
-                try:
-                    return int(status), json.loads(body)
-                except json.JSONDecodeError:
-                    return int(status), body
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            try:
-                return int(e.code), json.loads(body)
-            except json.JSONDecodeError:
-                return int(e.code), body
-        except BaseException as e:  # noqa: BLE001
-            last = e
-            if not _is_transient_net_error(e) or i + 1 >= attempts:
-                raise
-            time.sleep(retry_sleep * (i + 1))
-    assert last is not None
-    raise last
-
-
-@dataclass
-class DeviceCodeSession:
-    device_code: str
-    user_code: str
-    verification_uri: str
-    verification_uri_complete: str
-    expires_in: int
-    interval: int
-    raw: dict[str, Any]
-
-
-@dataclass
-class TokenResult:
-    access_token: str
-    refresh_token: str
-    id_token: str | None
-    token_type: str
-    expires_in: int
-    raw: dict[str, Any]
 
 
 class OAuthDeviceError(RuntimeError):
     pass
 
 
-def request_device_code(
-    *,
-    client_id: str = CLIENT_ID,
-    scope: str = SCOPE,
-    timeout: float = 30.0,
-    proxy: str | None = None,
-) -> DeviceCodeSession:
-    status, body = _post_form(
-        DEVICE_CODE_URL,
+class DeviceCodeSession(object):
+    def __init__(
+        self,
+        device_code,
+        user_code,
+        verification_uri,
+        verification_uri_complete,
+        expires_in,
+        interval,
+        token_endpoint,
+        raw,
+    ):
+        self.device_code = device_code
+        self.user_code = user_code
+        self.verification_uri = verification_uri
+        self.verification_uri_complete = verification_uri_complete
+        self.expires_in = int(expires_in or 1800)
+        self.interval = int(interval or 5)
+        self.token_endpoint = token_endpoint
+        self.raw = raw
+
+
+class TokenResult(object):
+    def __init__(self, access_token, refresh_token, id_token, token_type, expires_in, raw):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.id_token = id_token
+        self.token_type = token_type or "Bearer"
+        self.expires_in = int(expires_in or 0)
+        self.raw = raw
+
+
+def _build_opener(proxy=None):
+    handlers = []
+    resolved = resolve_proxy(proxy)
+    if resolved:
+        handlers.append(urllib.request.ProxyHandler({"http": resolved, "https": resolved}))
+    return urllib.request.build_opener(*handlers) if handlers else urllib.request.build_opener()
+
+
+def _validate_endpoint(raw_url, field_name):
+    value = str(raw_url or "").strip()
+    if not value:
+        raise OAuthDeviceError("xAI discovery %s is empty" % field_name)
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme != "https":
+        raise OAuthDeviceError("xAI discovery %s must use https: %s" % (field_name, value))
+    host = (parsed.hostname or "").lower().strip()
+    if host != "x.ai" and not host.endswith(".x.ai"):
+        raise OAuthDeviceError("xAI discovery %s host is invalid: %s" % (field_name, host))
+    return value
+
+
+def discover(proxy=None, timeout=30.0, cancel=None, retries=2):
+    request = urllib.request.Request(
+        DISCOVERY_URL,
+        method="GET",
+        headers={"Accept": "application/json", "User-Agent": "grok-register-cpa/1.0"},
+    )
+    last_error = None
+    for attempt in range(max(int(retries), 0) + 1):
+        _check_cancel(cancel)
+        opener = _build_opener(proxy)
+        try:
+            with opener.open(request, timeout=float(timeout)) as response:
+                body = response.read().decode("utf-8", errors="replace")
+                status = int(getattr(response, "status", 200) or 200)
+            _check_cancel(cancel)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise OAuthDeviceError("xAI discovery failed HTTP %s: %s" % (exc.code, body))
+        except Exception as exc:
+            last_error = exc
+            if not _is_transient_net_error(exc) or attempt >= int(retries):
+                raise OAuthDeviceError("xAI discovery request failed: %s" % exc)
+            _sleep_with_cancel(1.0 * (attempt + 1), cancel)
+            continue
+        if status != 200:
+            raise OAuthDeviceError("xAI discovery failed HTTP %s: %s" % (status, body))
+        try:
+            payload = json.loads(body)
+        except Exception as exc:
+            raise OAuthDeviceError("xAI discovery parse failed: %s" % exc)
+        return {
+            "device_authorization_endpoint": _validate_endpoint(
+                payload.get("device_authorization_endpoint"), "device_authorization_endpoint"
+            ),
+            "token_endpoint": _validate_endpoint(payload.get("token_endpoint"), "token_endpoint"),
+        }
+    raise OAuthDeviceError("xAI discovery failed: %s" % last_error)
+
+
+def _check_cancel(cancel):
+    if cancel and cancel():
+        raise OAuthDeviceError("cancelled")
+
+
+def _sleep_with_cancel(seconds, cancel=None):
+    deadline = time.time() + max(float(seconds), 0.0)
+    while time.time() < deadline:
+        _check_cancel(cancel)
+        time.sleep(min(0.2, max(deadline - time.time(), 0.0)))
+    _check_cancel(cancel)
+
+
+def _is_transient_net_error(exc):
+    if isinstance(exc, (TimeoutError, BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError)):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = getattr(exc, "reason", None)
+        if isinstance(reason, BaseException) and _is_transient_net_error(reason):
+            return True
+        text = str(exc).lower()
+        return any(
+            needle in text
+            for needle in (
+                "broken pipe",
+                "connection reset",
+                "connection aborted",
+                "timed out",
+                "timeout",
+                "temporarily unavailable",
+                "network is unreachable",
+                "name or service not known",
+                "unexpected_eof",
+                "eof occurred",
+                "ssl",
+                "handshake",
+                "remote end closed",
+                "bad gateway",
+                "connection refused",
+            )
+        )
+    try:
+        import ssl as _ssl
+
+        if isinstance(exc, _ssl.SSLError):
+            return True
+    except Exception:
+        pass
+    if isinstance(exc, OSError):
+        if getattr(exc, "errno", None) in (32, 104, 110, 111, 113, 101):
+            return True
+        text = str(exc).lower()
+        return any(needle in text for needle in ("broken pipe", "timed out", "connection reset", "ssl"))
+    return False
+
+
+def _post_form(url, form, timeout=30.0, proxy=None, retries=0, retry_sleep=1.5, cancel=None):
+    data = urllib.parse.urlencode(form).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "grok-register-cpa/1.0",
+        },
+    )
+    last_error = None
+    for attempt in range(max(int(retries), 0) + 1):
+        _check_cancel(cancel)
+        opener = _build_opener(proxy)
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                body = response.read().decode("utf-8", errors="replace")
+                status = int(getattr(response, "status", 200) or 200)
+            _check_cancel(cancel)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            status = int(exc.code)
+        except Exception as exc:
+            last_error = exc
+            if not _is_transient_net_error(exc) or attempt >= int(retries):
+                raise
+            _sleep_with_cancel(float(retry_sleep) * (attempt + 1), cancel)
+            continue
+        try:
+            return status, json.loads(body)
+        except Exception:
+            return status, body
+    if last_error is not None:
+        raise last_error
+    raise OAuthDeviceError("form request failed without response")
+
+
+def request_device_code(client_id=CLIENT_ID, scope=SCOPE, timeout=15.0, proxy=None, cancel=None, retries=2):
+    discovery = discover(proxy=proxy, timeout=timeout, cancel=cancel, retries=retries)
+    _check_cancel(cancel)
+    device_endpoint = discovery["device_authorization_endpoint"]
+    token_endpoint = discovery["token_endpoint"]
+    status, payload = _post_form(
+        device_endpoint,
         {"client_id": client_id, "scope": scope},
         timeout=timeout,
         proxy=proxy,
-        retries=2,
+        retries=retries,
         retry_sleep=1.0,
+        cancel=cancel,
     )
-    if status != 200 or not isinstance(body, dict):
-        raise OAuthDeviceError(f"device code request failed HTTP {status}: {body!r}")
-    device_code = str(body.get("device_code") or "").strip()
-    user_code = str(body.get("user_code") or "").strip()
+    _check_cancel(cancel)
+    if status != 200 or not isinstance(payload, dict):
+        raise OAuthDeviceError("device code request failed HTTP %s: %r" % (status, payload))
+    device_code = str(payload.get("device_code") or "").strip()
+    user_code = str(payload.get("user_code") or "").strip()
     if not device_code or not user_code:
-        raise OAuthDeviceError(f"device code response missing fields: {body}")
-    vuri = str(body.get("verification_uri") or "https://accounts.x.ai/oauth2/device").strip()
-    vcomplete = str(
-        body.get("verification_uri_complete") or f"{vuri}?user_code={user_code}"
+        raise OAuthDeviceError("device code response missing fields: %r" % payload)
+    verification_uri = str(payload.get("verification_uri") or "https://accounts.x.ai/oauth2/device").strip()
+    verification_uri_complete = str(
+        payload.get("verification_uri_complete") or ("%s?user_code=%s" % (verification_uri, user_code))
     ).strip()
-    expires_in = int(body.get("expires_in") or 1800)
-    interval = max(int(body.get("interval") or 5), 1)
     return DeviceCodeSession(
         device_code=device_code,
         user_code=user_code,
-        verification_uri=vuri,
-        verification_uri_complete=vcomplete,
-        expires_in=expires_in,
-        interval=interval,
-        raw=body,
+        verification_uri=verification_uri,
+        verification_uri_complete=verification_uri_complete,
+        expires_in=int(payload.get("expires_in") or 1800),
+        interval=max(int(payload.get("interval") or 5), 1),
+        token_endpoint=token_endpoint,
+        raw=payload,
     )
 
 
 def poll_device_token(
-    device_code: str,
-    *,
-    client_id: str = CLIENT_ID,
-    interval: int = 5,
-    expires_in: int = 1800,
-    timeout: float = 30.0,
-    log: LogFn | None = None,
-    cancel: Callable[[], bool] | None = None,
-    proxy: str | None = None,
-) -> TokenResult:
-    """Poll token endpoint until authorized or expired.
-
-    Transient proxy/TLS errors (Broken pipe, SSL EOF, timeouts) are retried
-    until the device-code deadline so a successful browser consent is not
-    wasted by a single flaky poll.
-    """
-    log = log or _noop_log
-    deadline = time.time() + max(expires_in - 5, 30)
-    sleep_for = max(interval, 1)
-    fast_poll_remaining = 3
+    device_code,
+    token_endpoint,
+    client_id=CLIENT_ID,
+    interval=5,
+    expires_in=1800,
+    timeout=30.0,
+    log=None,
+    cancel=None,
+    proxy=None,
+):
+    logger = log or (lambda message: None)
+    deadline = time.time() + max(int(expires_in) - 5, 30)
+    sleep_seconds = max(int(interval), 1)
     net_streak = 0
     max_net_streak = 20
     while time.time() < deadline:
         if cancel and cancel():
             raise OAuthDeviceError("cancelled")
         try:
-            status, body = _post_form(
-                TOKEN_URL,
+            status, payload = _post_form(
+                token_endpoint,
                 {
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    "device_code": device_code,
+                    "device_code": str(device_code).strip(),
                     "client_id": client_id,
                 },
-                timeout=timeout,
+                timeout=float(timeout),
                 proxy=proxy,
-                retries=2,
+                retries=0,
                 retry_sleep=1.0,
+                cancel=cancel,
             )
             net_streak = 0
-        except BaseException as e:  # noqa: BLE001
-            if not _is_transient_net_error(e):
+        except Exception as exc:
+            if not _is_transient_net_error(exc):
                 raise
             net_streak += 1
-            wait = min(sleep_for + min(net_streak, 5), 20)
-            log(
-                f"oauth poll network blip ({net_streak}/{max_net_streak}): {e} "
-                f"— retry in {wait}s"
-            )
+            wait_seconds = min(sleep_seconds + min(net_streak, 5), 20)
+            logger("oauth poll network blip (%s/%s): %s — retry in %ss" % (net_streak, max_net_streak, exc, wait_seconds))
             if net_streak >= max_net_streak:
-                raise OAuthDeviceError(
-                    f"device auth aborted after {net_streak} network errors: {e}"
-                ) from e
-            time.sleep(wait)
+                raise OAuthDeviceError("device auth aborted after %s network errors: %s" % (net_streak, exc))
+            _sleep_with_cancel(wait_seconds, cancel)
             continue
-        if status == 200 and isinstance(body, dict) and body.get("access_token"):
-            access = str(body["access_token"]).strip()
-            refresh = str(body.get("refresh_token") or "").strip()
-            if not refresh:
+        if status == 200 and isinstance(payload, dict) and payload.get("access_token"):
+            access_token = str(payload.get("access_token") or "").strip()
+            refresh_token = str(payload.get("refresh_token") or "").strip()
+            if not refresh_token:
                 raise OAuthDeviceError("token response missing refresh_token")
             return TokenResult(
-                access_token=access,
-                refresh_token=refresh,
-                id_token=(str(body["id_token"]).strip() if body.get("id_token") else None),
-                token_type=str(body.get("token_type") or "Bearer"),
-                expires_in=int(body.get("expires_in") or 21600),
-                raw=body,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                id_token=(str(payload.get("id_token") or "").strip() or None),
+                token_type=str(payload.get("token_type") or "Bearer"),
+                expires_in=int(payload.get("expires_in") or 21600),
+                raw=payload,
             )
-        err = ""
-        desc = ""
-        if isinstance(body, dict):
-            err = str(body.get("error") or "")
-            desc = str(body.get("error_description") or "")
-        if err in ("authorization_pending", "slow_down"):
-            if err == "slow_down":
-                sleep_for = min(sleep_for + 5, 30)
-            log(f"oauth poll: {err} (sleep {sleep_for}s)")
-            actual_sleep = 2 if fast_poll_remaining > 0 else sleep_for
-            if fast_poll_remaining > 0:
-                fast_poll_remaining -= 1
-            time.sleep(actual_sleep)
+        error_code = ""
+        error_description = ""
+        if isinstance(payload, dict):
+            error_code = str(payload.get("error") or "")
+            error_description = str(payload.get("error_description") or "")
+        if error_code in ("authorization_pending", "slow_down"):
+            if error_code == "slow_down":
+                sleep_seconds = min(sleep_seconds + 5, 30)
+            logger("oauth poll: %s (sleep %ss)" % (error_code, sleep_seconds))
+            _sleep_with_cancel(sleep_seconds, cancel)
             continue
-        if err in ("expired_token", "access_denied"):
-            raise OAuthDeviceError(f"device auth failed: {err}: {desc}")
-        if status == 400 and err:
-            raise OAuthDeviceError(f"device auth token error: {err}: {desc or body}")
-        # 5xx / empty / proxy HTML — treat as soft error and keep polling
-        if status >= 500 or status in (502, 503, 504) or not isinstance(body, dict):
+        if error_code in ("expired_token", "access_denied"):
+            raise OAuthDeviceError("device auth failed: %s: %s" % (error_code, error_description))
+        if status == 400 and error_code:
+            raise OAuthDeviceError("device auth token error: %s: %s" % (error_code, error_description or payload))
+        if status >= 500 or not isinstance(payload, dict):
             net_streak += 1
-            wait = min(sleep_for + 2, 20)
-            log(f"oauth poll soft HTTP {status}: {body!r} — retry in {wait}s")
+            wait_seconds = min(sleep_seconds + 2, 20)
+            logger("oauth poll soft HTTP %s: %r — retry in %ss" % (status, payload, wait_seconds))
             if net_streak >= max_net_streak:
-                raise OAuthDeviceError(
-                    f"device auth aborted after soft HTTP failures status={status}"
-                )
-            time.sleep(wait)
+                raise OAuthDeviceError("device auth aborted after repeated soft HTTP failures status=%s" % status)
+            _sleep_with_cancel(wait_seconds, cancel)
             continue
-        log(f"oauth poll unexpected HTTP {status}: {body!r}")
-        time.sleep(sleep_for)
+        logger("oauth poll unexpected HTTP %s: %r" % (status, payload))
+        _sleep_with_cancel(sleep_seconds, cancel)
     raise OAuthDeviceError("device auth timed out waiting for user approval")
