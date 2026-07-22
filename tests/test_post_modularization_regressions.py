@@ -104,6 +104,16 @@ class PostModularizationRegressionTests(unittest.TestCase):
         annotation = cpa_export.CpaExportSettings.__annotations__["hotload_dir"]
         self.assertNotIsInstance(annotation, str)
 
+    def test_proxyscrape_mode_does_not_leak_manual_proxy_into_cpa(self):
+        settings = cpa_export.CpaExportSettings.from_config(
+            {"proxy_mode": "proxyscrape", "proxy": "http://manual.invalid:80"}
+        )
+        self.assertEqual(settings.proxy, "")
+        explicit = cpa_export.CpaExportSettings.from_config(
+            {"proxy_mode": "proxyscrape", "cpa_proxy": "http://cpa.example:80"}
+        )
+        self.assertEqual(explicit.proxy, "http://cpa.example:80")
+
 
 if __name__ == "__main__":
     unittest.main()

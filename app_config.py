@@ -28,7 +28,9 @@ DEFAULT_CONFIG = {
     "imap_folder": "INBOX",
     "imap_address_domain": "",
     "imap_address_suffix": "-grok",
+    "proxy_mode": "manual",
     "proxy": "",
+    "proxyscrape_country_codes": [],
     "enable_nsfw": True,
     "register_count": 1,
     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
@@ -65,6 +67,9 @@ DEFAULT_CONFIG = {
     "cpa_mint_cookie_inject": True,
     "cpa_oidc_request_timeout_sec": 15,
     "cpa_oidc_poll_timeout_sec": 15,
+    "cpa_device_code_attempts": 4,
+    "cpa_device_code_retry_delay_sec": 60,
+    "cpa_device_code_max_retry_delay_sec": 300,
     "grok2api_allow_legacy_full_save": False,
     "email_provider": "duckmail",
     "yyds_api_key": "",
@@ -124,6 +129,9 @@ def validate_config_structure(raw):
     cfg["cpa_mint_timeout_sec"] = _require_int(cfg, "cpa_mint_timeout_sec", 30, 1800)
     cfg["cpa_oidc_request_timeout_sec"] = _require_int(cfg, "cpa_oidc_request_timeout_sec", 3, 120)
     cfg["cpa_oidc_poll_timeout_sec"] = _require_int(cfg, "cpa_oidc_poll_timeout_sec", 3, 120)
+    cfg["cpa_device_code_attempts"] = _require_int(cfg, "cpa_device_code_attempts", 1, 10)
+    cfg["cpa_device_code_retry_delay_sec"] = _require_int(cfg, "cpa_device_code_retry_delay_sec", 1, 600)
+    cfg["cpa_device_code_max_retry_delay_sec"] = _require_int(cfg, "cpa_device_code_max_retry_delay_sec", 1, 900)
     cfg["sub2api_concurrency"] = _require_int(cfg, "sub2api_concurrency", 1, 1000)
     cfg["sub2api_priority"] = _require_int(cfg, "sub2api_priority", 1, 1000)
     cfg["sub2api_timeout_sec"] = _require_int(cfg, "sub2api_timeout_sec", 1, 1800)
@@ -136,11 +144,23 @@ def validate_config_structure(raw):
     group_ids = cfg.get("sub2api_group_ids")
     if not isinstance(group_ids, list) or not group_ids or any(type(value) is not int for value in group_ids):
         raise ConfigError("Config option sub2api_group_ids must be a non-empty integer array")
+    country_codes = cfg.get("proxyscrape_country_codes")
+    if not isinstance(country_codes, list) or any(not isinstance(value, str) for value in country_codes):
+        raise ConfigError("Config option proxyscrape_country_codes must be an array of ISO country codes")
+    normalized_country_codes = []
+    for value in country_codes:
+        code = value.strip().upper()
+        if not re.fullmatch(r"[A-Z]{2}", code):
+            raise ConfigError("Config option proxyscrape_country_codes contains an invalid ISO country code")
+        if code not in normalized_country_codes:
+            normalized_country_codes.append(code)
+    cfg["proxyscrape_country_codes"] = normalized_country_codes
     string_keys = tuple(key for key, value in DEFAULT_CONFIG.items() if isinstance(value, str))
     path_keys = {"grok2api_local_token_file", "api_reverse_tools", "cpa_auth_dir", "cpa_hotload_dir"}
     for key in string_keys:
         cfg[key] = _require_string(cfg, key, path=key in path_keys)
     enums = {
+        "proxy_mode": {"off", "manual", "proxyscrape"},
         "email_provider": {"duckmail", "yyds", "cloudflare", "cloudmail", "imap"},
         "cloudflare_auth_mode": {"query-key", "bearer", "x-api-key", "x-admin-auth", "none"},
         "grok2api_pool_name": {"ssoBasic", "ssoSuper"},

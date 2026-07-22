@@ -1,6 +1,7 @@
 """Optionally generate CPA xAI OIDC credentials after registration."""
 from dataclasses import dataclass
 import importlib.util
+import json
 import os
 import shutil
 import sys
@@ -10,6 +11,16 @@ from typing import Optional
 
 _ROOT = Path(__file__).resolve().parent
 _DEFAULT_AUTH_DIR = _ROOT / "cpa_auths"
+
+
+def _configured_cpa_proxy(config):
+    cfg = config or {}
+    explicit = str(cfg.get("cpa_proxy") or "").strip()
+    if explicit:
+        return explicit
+    if str(cfg.get("proxy_mode", "manual") or "manual").lower() == "manual":
+        return str(cfg.get("proxy") or "").strip()
+    return ""
 
 
 @dataclass(frozen=True)
@@ -23,6 +34,9 @@ class CpaExportSettings:
     mint_timeout: float
     request_timeout: float
     poll_timeout: float
+    device_code_attempts: int
+    device_code_retry_delay: float
+    device_code_max_retry_delay: float
     base_url: str
     force_standalone: bool
     cookie_inject: bool
@@ -43,11 +57,14 @@ class CpaExportSettings:
             auth_dir=auth_dir,
             hotload_dir=hotload_dir,
             copy_to_hotload=bool(cfg.get("cpa_copy_to_hotload", False)),
-            proxy=str(cfg.get("cpa_proxy") or cfg.get("proxy") or "").strip(),
+            proxy=_configured_cpa_proxy(cfg),
             headless=bool(cfg.get("cpa_headless", False)),
             mint_timeout=float(cfg.get("cpa_mint_timeout_sec") or 300),
             request_timeout=float(cfg.get("cpa_oidc_request_timeout_sec") or 15),
             poll_timeout=float(cfg.get("cpa_oidc_poll_timeout_sec") or 15),
+            device_code_attempts=int(cfg.get("cpa_device_code_attempts") or 4),
+            device_code_retry_delay=float(cfg.get("cpa_device_code_retry_delay_sec") or 60),
+            device_code_max_retry_delay=float(cfg.get("cpa_device_code_max_retry_delay_sec") or 300),
             base_url=str(cfg.get("cpa_base_url") or "https://cli-chat-proxy.grok.com/v1").strip(),
             force_standalone=bool(cfg.get("cpa_force_standalone", True)),
             cookie_inject=bool(cfg.get("cpa_mint_cookie_inject", True)),
@@ -168,6 +185,31 @@ def _sync_sub2api_before_distribution(result, config, log):
     return True
 
 
+def _distribute_result(result, settings, config, log):
+    allow_distribution = True
+    if result.get("ok") and result.get("path"):
+        allow_distribution = _sync_sub2api_before_distribution(result, config or {}, log)
+    if (allow_distribution and result.get("ok") and result.get("path")
+            and settings.copy_to_hotload and settings.hotload_dir):
+        try:
+            settings.hotload_dir.mkdir(parents=True, exist_ok=True)
+            source = Path(result["path"])
+            target = settings.hotload_dir / source.name
+            shutil.copy2(str(source), str(target))
+            try:
+                os.chmod(str(target), 0o600)
+            except Exception:
+                pass
+            result["hotload_path"] = str(target)
+            log("[cpa] hotload copy -> %s" % target)
+        except Exception as exc:
+            result["cpa_copy_error"] = str(exc)
+            result["warning"] = True
+            result["partial"] = True
+            log("[cpa] hotload copy failed: %s" % exc)
+    return result
+
+
 def export_cpa_xai_for_account(email, password, page=None, cookies=None, sso=None,
                                config=None, log_callback=None, cancel_callback=None):
     settings = CpaExportSettings.from_config(config)
@@ -206,29 +248,12 @@ def export_cpa_xai_for_account(email, password, page=None, cookies=None, sso=Non
         log=lambda message: log("[cpa] %s" % message), cancel=cancel_callback,
         request_timeout_sec=settings.request_timeout,
         poll_timeout_sec=settings.poll_timeout,
+        device_code_attempts=settings.device_code_attempts,
+        device_code_retry_delay_sec=settings.device_code_retry_delay,
+        device_code_max_retry_delay_sec=settings.device_code_max_retry_delay,
     )
     result = _normalize_result(result, email)
-    allow_distribution = True
-    if result.get("ok") and result.get("path"):
-        allow_distribution = _sync_sub2api_before_distribution(result, config or {}, log)
-    if (allow_distribution and result.get("ok") and result.get("path")
-            and settings.copy_to_hotload and settings.hotload_dir):
-        try:
-            settings.hotload_dir.mkdir(parents=True, exist_ok=True)
-            source = Path(result["path"])
-            target = settings.hotload_dir / source.name
-            shutil.copy2(str(source), str(target))
-            try:
-                os.chmod(str(target), 0o600)
-            except Exception:
-                pass
-            result["hotload_path"] = str(target)
-            log("[cpa] hotload copy -> %s" % target)
-        except Exception as exc:
-            result["cpa_copy_error"] = str(exc)
-            result["warning"] = True
-            result["partial"] = True
-            log("[cpa] hotload copy failed: %s" % exc)
+    _distribute_result(result, settings, config or {}, log)
     if not result.get("ok"):
         fail_path = settings.auth_dir / "cpa_auth_failed.txt"
         try:
@@ -237,3 +262,68 @@ def export_cpa_xai_for_account(email, password, page=None, cookies=None, sso=Non
         except Exception as exc:
             log("[cpa] failed to persist failure record: %s" % exc)
     return result
+
+
+def _account_record_for_email(accounts_path, email):
+    path = Path(accounts_path).expanduser().resolve()
+    target_email = str(email or "").strip().lower()
+    if not path.is_file():
+        raise ValueError("accounts file not found: %s" % path)
+    if not target_email:
+        raise ValueError("email is required")
+    matches = []
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_number, raw_line in enumerate(handle, 1):
+            line = raw_line.rstrip("\r\n")
+            if not line:
+                continue
+            parts = line.split("----", 2)
+            if len(parts) != 3:
+                raise ValueError("malformed account record at line %s" % line_number)
+            record_email, password, sso = parts
+            if record_email.strip().lower() == target_email:
+                matches.append((record_email.strip(), password, sso.strip()))
+    unique = list(dict.fromkeys(matches))
+    if not unique:
+        raise ValueError("email not found in accounts file: %s" % email)
+    if len(unique) != 1:
+        raise ValueError("ambiguous duplicate account records for email: %s" % email)
+    record_email, password, sso = unique[0]
+    if not password or not sso:
+        raise ValueError("account record is missing password or SSO token")
+    return {"email": record_email, "password": password, "sso": sso, "path": str(path)}
+
+
+def retry_cpa_from_accounts_file(accounts_path, email, config=None, log_callback=None,
+                                 cancel_callback=None):
+    cfg = dict(config or {})
+    log = log_callback or (lambda message: None)
+    settings = CpaExportSettings.from_config(cfg)
+    record = _account_record_for_email(accounts_path, email)
+    from cpa_xai.schema import credential_file_name
+
+    existing_path = settings.auth_dir / credential_file_name(record["email"])
+    if existing_path.is_file():
+        try:
+            payload = json.loads(existing_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise ValueError("existing CPA file is invalid: %s" % exc) from exc
+        if str(payload.get("email") or "").strip().lower() != record["email"].lower():
+            raise ValueError("existing CPA file belongs to a different email")
+        if not payload.get("access_token") or not payload.get("refresh_token"):
+            raise ValueError("existing CPA file is missing required tokens")
+        log("[cpa] existing credential found; skipping mint for %s" % record["email"])
+        result = _normalize_result(
+            {"ok": True, "path": str(existing_path), "reused": True}, record["email"]
+        )
+        return _distribute_result(result, settings, cfg, log)
+
+    return export_cpa_xai_for_account(
+        email=record["email"],
+        password=record["password"],
+        page=None,
+        sso=record["sso"],
+        config=cfg,
+        log_callback=log,
+        cancel_callback=cancel_callback,
+    )

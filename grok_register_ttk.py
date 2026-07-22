@@ -278,7 +278,7 @@ def _bind_registration_browser():
 
 
 LocalAuthProxyBridge = _browser_runtime.LocalAuthProxyBridge
-for _name in ['get_configured_proxy', 'get_proxies', '_parse_proxy_url', '_safe_proxy_port', '_proxy_has_auth', '_strip_proxy_auth', '_proxy_endpoint_terms', 'is_proxy_connection_error', 'page_has_proxy_error', '_ReusableThreadingTCPServer', '_proxy_recv_until_headers', '_proxy_relay', '_LocalAuthProxyBridgeHandler', 'LocalAuthProxyBridge', 'prepare_browser_proxy', 'apply_browser_proxy_option', 'create_browser_options', '_build_request_kwargs', 'http_get', 'http_post']:
+for _name in ['get_configured_proxy', 'get_proxy_mode', 'get_browser_proxy', 'get_proxies', 'reset_proxy_selection', 'prepare_account_proxy', 'reject_current_browser_proxy', 'is_proxyscrape_mode', '_parse_proxy_url', '_safe_proxy_port', '_proxy_has_auth', '_strip_proxy_auth', '_proxy_endpoint_terms', 'is_proxy_connection_error', 'page_has_proxy_error', '_ReusableThreadingTCPServer', '_proxy_recv_until_headers', '_proxy_relay', '_LocalAuthProxyBridgeHandler', 'LocalAuthProxyBridge', 'prepare_browser_proxy', 'apply_browser_proxy_option', 'create_browser_options', '_build_request_kwargs', 'http_get', 'http_post']:
     if _name.startswith("_") and _name in {"_ReusableThreadingTCPServer", "_LocalAuthProxyBridgeHandler", "_proxy_recv_until_headers", "_proxy_relay"}:
         continue
     if _name != "LocalAuthProxyBridge":
@@ -635,8 +635,13 @@ def retry_pending_file(pending_path, output_path=None, log_callback=None):
 
 def run_registration_common(count, log_callback, cancel_callback, accounts_output_file, observer):
     from registration_flow import RegistrationCallbacks, RegistrationOperations, run_batch
+    _bind_browser_runtime()
+    reset_proxy_selection(log=log_callback, cancel=cancel_callback)
     callbacks = RegistrationCallbacks(log=log_callback, cancelled=cancel_callback)
     operations = RegistrationOperations(
+        prepare_account_network=lambda index: prepare_account_proxy(
+            index, log=log_callback, cancel=cancel_callback
+        ),
         start_browser=lambda: start_browser(log_callback=log_callback),
         restart_browser=lambda: restart_browser(log_callback=log_callback),
         browser_missing=lambda: _registration_browser.browser is None,
@@ -758,10 +763,28 @@ class GrokRegisterGUI:
         self.nsfw_check = tk_checkbutton(config_frame, text="Enable NSFW after registration", variable=self.nsfw_var)
         add_field(self.nsfw_check, 1, 1, sticky=tk.W)
 
-        add_label(1, 2, "Proxy (optional):")
+        add_label(1, 2, "Proxy settings:")
+        proxy_controls = tk.Frame(config_frame, bg=UI_PANEL_BG)
+        self.proxy_mode_var = tk.StringVar(value=config.get("proxy_mode", "manual"))
+        self.proxy_mode_combo = tk_option_menu(
+            proxy_controls, self.proxy_mode_var, ["off", "manual", "proxyscrape"], width=11
+        )
+        self.proxy_mode_combo.grid(row=0, column=0, sticky=tk.W, padx=(0, 6))
         self.proxy_var = tk.StringVar(value=config.get("proxy", ""))
-        self.proxy_entry = tk_entry(config_frame, textvariable=self.proxy_var, width=34)
-        add_field(self.proxy_entry, 1, 3)
+        self.proxy_entry = tk_entry(proxy_controls, textvariable=self.proxy_var, width=20)
+        self.proxy_entry.grid(row=0, column=1, sticky=tk.EW)
+        tk_label(proxy_controls, text="Countries:", bg=UI_PANEL_BG).grid(
+            row=1, column=0, sticky=tk.W, pady=(4, 0)
+        )
+        self.proxyscrape_countries_var = tk.StringVar(
+            value=",".join(config.get("proxyscrape_country_codes", []))
+        )
+        self.proxyscrape_countries_entry = tk_entry(
+            proxy_controls, textvariable=self.proxyscrape_countries_var, width=20
+        )
+        self.proxyscrape_countries_entry.grid(row=1, column=1, sticky=tk.EW, pady=(4, 0))
+        proxy_controls.grid_columnconfigure(1, weight=1)
+        add_field(proxy_controls, 1, 3)
 
         add_label(2, 0, "DuckMail API Key:")
         self.api_key_var = tk.StringVar(value=config.get("duckmail_api_key", ""))
@@ -994,7 +1017,13 @@ class GrokRegisterGUI:
 
         config["email_provider"] = self.email_provider_var.get().strip() or "duckmail"
         config["enable_nsfw"] = bool(self.nsfw_var.get())
+        config["proxy_mode"] = self.proxy_mode_var.get().strip() or "manual"
         config["proxy"] = self.proxy_var.get().strip()
+        config["proxyscrape_country_codes"] = [
+            value.strip().upper()
+            for value in self.proxyscrape_countries_var.get().split(",")
+            if value.strip()
+        ]
         config["duckmail_api_key"] = self.api_key_var.get().strip()
         config["cloudflare_api_base"] = self.cloudflare_api_base_var.get().strip()
         config["cloudflare_api_key"] = self.cloudflare_api_key_var.get().strip()
@@ -1136,6 +1165,29 @@ def run_registration_cli(count):
         cli_log(f"[*] Task complete. Success {last_stats['success']} | failed {last_stats['fail']} | pending {last_stats['pending']} | warnings {last_stats['warnings']}")
 
 
+def run_retry_cpa_cli(accounts_path, email):
+    load_config()
+    validated = validate_run_requirements(config)
+    config.clear()
+    config.update(validated)
+    from cpa_export import retry_cpa_from_accounts_file
+
+    controller = CliStopController()
+    result = retry_cpa_from_accounts_file(
+        accounts_path,
+        email,
+        config=config,
+        log_callback=cli_log,
+        cancel_callback=controller.should_stop,
+    )
+    if result.get("ok"):
+        state = "reused" if result.get("reused") else "created"
+        cli_log("[+] CPA recovery %s: %s" % (state, result.get("path") or email))
+        return True
+    cli_log("[!] CPA recovery failed: %s" % (result.get("error") or "unknown error"))
+    return False
+
+
 def main_cli():
     try:
         load_config()
@@ -1165,6 +1217,21 @@ def main_cli():
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "retry-cpa":
+        if len(sys.argv) != 5 or sys.argv[3] != "--email":
+            print(
+                "Usage: python grok_register_ttk.py retry-cpa <accounts-file> --email <email>",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            return 0 if run_retry_cpa_cli(sys.argv[2], sys.argv[4]) else 1
+        except KeyboardInterrupt:
+            cli_log("[!] CPA recovery cancelled")
+            return 130
+        except Exception as exc:
+            log_exception("CPA recovery failed", exc, cli_log)
+            return 1
     if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "retry-pending":
         if len(sys.argv) < 3:
             print("Usage: python grok_register_ttk.py retry-pending <pending-file> [output-file]", file=sys.stderr)
@@ -1204,4 +1271,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

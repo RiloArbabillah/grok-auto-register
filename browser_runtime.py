@@ -9,9 +9,13 @@ from cpa_xai.proxyutil import (
     prepare_chromium_proxy,
     proxy_for_chromium,
 )
+from proxyscrape_pool import ProxyScrapePool
 
 _config = {}
 _extension_path = ""
+_proxyscrape_pool = None
+_proxyscrape_proxy = ""
+_proxyscrape_account_index = None
 
 
 def configure_runtime(config_ref, extension_path=""):
@@ -21,7 +25,58 @@ def configure_runtime(config_ref, extension_path=""):
 
 
 def get_configured_proxy():
+    if get_proxy_mode() != "manual":
+        return ""
     return str(_config.get("proxy", "") or "").strip()
+
+
+def get_proxy_mode():
+    return str(_config.get("proxy_mode", "manual") or "manual").strip().lower()
+
+
+def get_browser_proxy():
+    if get_proxy_mode() == "proxyscrape":
+        return _proxyscrape_proxy
+    return get_configured_proxy()
+
+
+def reset_proxy_selection(log=None, cancel=None):
+    global _proxyscrape_pool, _proxyscrape_proxy, _proxyscrape_account_index
+    _proxyscrape_proxy = ""
+    _proxyscrape_account_index = None
+    if get_proxy_mode() == "proxyscrape":
+        _proxyscrape_pool = ProxyScrapePool(
+            country_codes=_config.get("proxyscrape_country_codes") or [],
+            log=log,
+            cancel=cancel,
+        )
+    else:
+        _proxyscrape_pool = None
+
+
+def prepare_account_proxy(account_index, log=None, cancel=None):
+    global _proxyscrape_pool, _proxyscrape_proxy, _proxyscrape_account_index
+    if get_proxy_mode() != "proxyscrape":
+        return get_browser_proxy()
+    if _proxyscrape_pool is None:
+        reset_proxy_selection(log=log, cancel=cancel)
+    index = int(account_index)
+    if _proxyscrape_account_index == index and _proxyscrape_proxy:
+        return _proxyscrape_proxy
+    _proxyscrape_proxy = _proxyscrape_pool.select()
+    _proxyscrape_account_index = index
+    return _proxyscrape_proxy
+
+
+def reject_current_browser_proxy():
+    global _proxyscrape_proxy
+    if _proxyscrape_pool is not None and _proxyscrape_proxy:
+        _proxyscrape_pool.reject(_proxyscrape_proxy)
+    _proxyscrape_proxy = ""
+
+
+def is_proxyscrape_mode():
+    return get_proxy_mode() == "proxyscrape"
 
 
 def get_proxies():
@@ -113,7 +168,7 @@ def page_has_proxy_error(page_obj):
 
 
 def prepare_browser_proxy(use_proxy=True, log_callback=None):
-    proxy = get_configured_proxy()
+    proxy = get_browser_proxy()
     if not use_proxy or not proxy:
         return "", None
     parsed = _parse_proxy_url(proxy)

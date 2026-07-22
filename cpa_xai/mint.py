@@ -22,6 +22,9 @@ def mint_and_export(
     cancel=None,
     request_timeout_sec=15.0,
     poll_timeout_sec=15.0,
+    device_code_attempts=4,
+    device_code_retry_delay_sec=60.0,
+    device_code_max_retry_delay_sec=300.0,
 ):
     logger = log or (lambda message: None)
     email = str(email or "").strip()
@@ -44,6 +47,9 @@ def mint_and_export(
             recycle_every=int(recycle_every or 0),
             request_timeout_sec=float(request_timeout_sec),
             poll_timeout_sec=float(poll_timeout_sec),
+            device_code_attempts=int(device_code_attempts),
+            device_code_retry_delay_sec=float(device_code_retry_delay_sec),
+            device_code_max_retry_delay_sec=float(device_code_max_retry_delay_sec),
         )
     except Exception as exc:
         logger("mint failed: %s" % exc)

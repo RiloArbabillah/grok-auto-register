@@ -45,10 +45,25 @@ Edit `config.json` before starting. This file may contain API keys, JWTs, proxie
 | `email_provider` | `duckmail`, `yyds`, `cloudflare`, `cloudmail`, or `imap` |
 | `register_count` | Number of accounts to process |
 | `proxy` | Optional main registration proxy |
+| `proxy_mode` | `off`, `manual`, or opt-in `proxyscrape` browser proxy selection |
+| `proxyscrape_country_codes` | Optional ISO country-code list; empty accepts all countries |
 | `enable_nsfw` | Attempt to enable NSFW after registration |
 | `user_agent` | Browser and HTTP User-Agent |
 
 Cloudflare temporary mail uses `cloudflare_api_base`, `cloudflare_auth_mode`, the configured endpoint paths, and `defaultDomains`. YYDS requires `yyds_api_key` or `yyds_jwt`. Cloud Mail requires `cloudmail_api_base`, `cloudmail_public_token`, and `cloudmail_domains`.
+
+### ProxyScrape browser mode
+
+Set `proxy_mode` to `proxyscrape` to select a verified public HTTP proxy for each account. The selector uses ProxyScrape's v4 JSON API, requires elite HTTPS-capable proxies with strong latency and uptime metadata, and verifies the candidates against the xAI signup page before Chromium starts. A proxy remains fixed while the same account is retried, and IPs are not reused within one run.
+
+Only Chromium uses an automatically selected proxy. Mail providers, CPA export, grok2api, and Sub2API remain direct. If no candidate passes validation, the run stops instead of silently exposing the direct connection. Public proxies are untrusted and can observe destination metadata or disrupt traffic; do not route administrative credentials through them.
+
+```json
+{
+  "proxy_mode": "proxyscrape",
+  "proxyscrape_country_codes": ["SG", "ID"]
+}
+```
 
 ### IMAP catch-all inbox
 
@@ -94,6 +109,9 @@ Remote writes prefer the incremental `/tokens/add` endpoint. Legacy full-save is
 | `cpa_hotload_dir` | Hotload destination; required only when copying is enabled |
 | `cpa_base_url` | API base URL written into CPA credentials |
 | `cpa_proxy` | CPA-specific proxy; empty falls back to `proxy` |
+| `cpa_device_code_attempts` | Total device-code attempts after rate limiting; default `4` |
+| `cpa_device_code_retry_delay_sec` | Initial 429 retry delay when `Retry-After` is absent; default `60` |
+| `cpa_device_code_max_retry_delay_sec` | Maximum device-code retry delay; default `300` |
 | `cpa_headless` | Run the CPA browser headless |
 | `cpa_force_standalone` | Use an independent CPA browser session |
 | `cpa_mint_timeout_sec` | Browser authorization timeout |
@@ -154,6 +172,14 @@ python sub2api_admin.py import-cpa cpa_auths/xai-user@example.com.json --apply
 ```
 
 Omit `--apply` for a redacted dry run.
+
+Retry CPA generation and Sub2API synchronization for an account that was already saved:
+
+```bash
+python grok_register_ttk.py retry-cpa accounts_20260722_174728.txt --email yoga-susanto-grok@amazingnusantararun.com
+```
+
+The command reads the matching account record without printing its password or SSO token. If a valid CPA file already exists, it skips minting and only repeats distribution/synchronization.
 
 ## Output Files
 

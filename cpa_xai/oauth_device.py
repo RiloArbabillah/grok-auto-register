@@ -5,6 +5,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 from .proxyutil import resolve_proxy
 
@@ -167,7 +169,17 @@ def _is_transient_net_error(exc):
     return False
 
 
-def _post_form(url, form, timeout=30.0, proxy=None, retries=0, retry_sleep=1.5, cancel=None):
+def _response_headers(response):
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return {}
+    try:
+        return {str(key).lower(): str(value) for key, value in headers.items()}
+    except Exception:
+        return {}
+
+
+def _post_form_details(url, form, timeout=30.0, proxy=None, retries=0, retry_sleep=1.5, cancel=None):
     data = urllib.parse.urlencode(form).encode("utf-8")
     request = urllib.request.Request(
         url,
@@ -187,10 +199,12 @@ def _post_form(url, form, timeout=30.0, proxy=None, retries=0, retry_sleep=1.5, 
             with opener.open(request, timeout=timeout) as response:
                 body = response.read().decode("utf-8", errors="replace")
                 status = int(getattr(response, "status", 200) or 200)
+                headers = _response_headers(response)
             _check_cancel(cancel)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             status = int(exc.code)
+            headers = _response_headers(exc)
         except Exception as exc:
             last_error = exc
             if not _is_transient_net_error(exc) or attempt >= int(retries):
@@ -198,29 +212,85 @@ def _post_form(url, form, timeout=30.0, proxy=None, retries=0, retry_sleep=1.5, 
             _sleep_with_cancel(float(retry_sleep) * (attempt + 1), cancel)
             continue
         try:
-            return status, json.loads(body)
+            return status, json.loads(body), headers
         except Exception:
-            return status, body
+            return status, body, headers
     if last_error is not None:
         raise last_error
     raise OAuthDeviceError("form request failed without response")
 
 
-def request_device_code(client_id=CLIENT_ID, scope=SCOPE, timeout=15.0, proxy=None, cancel=None, retries=2):
+def _post_form(url, form, timeout=30.0, proxy=None, retries=0, retry_sleep=1.5, cancel=None):
+    status, payload, _ = _post_form_details(
+        url,
+        form,
+        timeout=timeout,
+        proxy=proxy,
+        retries=retries,
+        retry_sleep=retry_sleep,
+        cancel=cancel,
+    )
+    return status, payload
+
+
+def _retry_after_seconds(value, now=None):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(raw)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        current = now or datetime.now(timezone.utc)
+        return max((retry_at - current).total_seconds(), 0.0)
+    except Exception:
+        return None
+
+
+def request_device_code(
+    client_id=CLIENT_ID,
+    scope=SCOPE,
+    timeout=15.0,
+    proxy=None,
+    cancel=None,
+    retries=2,
+    rate_limit_attempts=4,
+    rate_limit_delay=60.0,
+    rate_limit_max_delay=300.0,
+    log=None,
+):
+    logger = log or (lambda message: None)
     discovery = discover(proxy=proxy, timeout=timeout, cancel=cancel, retries=retries)
     _check_cancel(cancel)
     device_endpoint = discovery["device_authorization_endpoint"]
     token_endpoint = discovery["token_endpoint"]
-    status, payload = _post_form(
-        device_endpoint,
-        {"client_id": client_id, "scope": scope},
-        timeout=timeout,
-        proxy=proxy,
-        retries=retries,
-        retry_sleep=1.0,
-        cancel=cancel,
-    )
-    _check_cancel(cancel)
+    attempts = max(int(rate_limit_attempts), 1)
+    for attempt in range(attempts):
+        status, payload, headers = _post_form_details(
+            device_endpoint,
+            {"client_id": client_id, "scope": scope},
+            timeout=timeout,
+            proxy=proxy,
+            retries=retries,
+            retry_sleep=1.0,
+            cancel=cancel,
+        )
+        _check_cancel(cancel)
+        if status != 429 or attempt >= attempts - 1:
+            break
+        retry_after = _retry_after_seconds(headers.get("retry-after"))
+        fallback = float(rate_limit_delay) * (2 ** attempt)
+        wait_seconds = retry_after if retry_after is not None else fallback
+        wait_seconds = min(max(wait_seconds, 0.0), float(rate_limit_max_delay))
+        logger(
+            "device code rate limited; retry %s/%s in %.0fs"
+            % (attempt + 2, attempts, wait_seconds)
+        )
+        _sleep_with_cancel(wait_seconds, cancel)
     if status != 200 or not isinstance(payload, dict):
         raise OAuthDeviceError("device code request failed HTTP %s: %r" % (status, payload))
     device_code = str(payload.get("device_code") or "").strip()

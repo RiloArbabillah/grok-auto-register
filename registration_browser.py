@@ -199,7 +199,7 @@ def stop_browser_proxy_bridge():
 def start_browser(log_callback=None, use_proxy=True):
     global browser, page, browser_proxy_bridge, browser_started_with_proxy
     last_exc = None
-    proxy_enabled = bool(use_proxy and get_configured_proxy())
+    proxy_enabled = bool(use_proxy and get_browser_proxy())
     for attempt in range(1, 5):
         bridge = None
         try:
@@ -211,7 +211,7 @@ def start_browser(log_callback=None, use_proxy=True):
             page = tabs[-1] if tabs else browser.new_tab()
             if log_callback and getattr(browser, "user_data_path", None):
                 log_callback(f"[Debug] Browser profile directory: {browser.user_data_path}")
-            if log_callback and get_configured_proxy():
+            if log_callback and get_browser_proxy():
                 mode = "proxy" if browser_started_with_proxy else "direct"
                 log_callback(f"[*] Browser network mode: {mode}")
             if log_callback and attempt > 1:
@@ -372,6 +372,9 @@ def open_signup_page(log_callback=None, cancel_callback=None):
     try:
         _open_with_current_browser()
     except Exception as e:
+        if browser_started_with_proxy and is_proxyscrape_mode():
+            reject_current_browser_proxy()
+            raise AccountRetryNeeded(f"ProxyScrape proxy failed to open registration page: {e}") from e
         if browser_started_with_proxy and get_configured_proxy():
             if log_callback:
                 log_callback(f"[!] Proxy failed to open registration page; falling back to direct connection: {e}")
@@ -381,6 +384,9 @@ def open_signup_page(log_callback=None, cancel_callback=None):
             raise
 
     if browser_started_with_proxy and page_has_proxy_error(page):
+        if is_proxyscrape_mode():
+            reject_current_browser_proxy()
+            raise AccountRetryNeeded("ProxyScrape proxy displayed a browser connection error")
         if log_callback:
             log_callback("[!] Browser displayed a proxy error; falling back to direct connection")
         restart_browser(log_callback=log_callback, use_proxy=False)

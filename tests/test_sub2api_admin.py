@@ -54,6 +54,28 @@ class Sub2APIConfigTests(unittest.TestCase):
         with self.assertRaises(app_config.ConfigError):
             app_config.validate_run_requirements({"sub2api_auto_import": True})
 
+    def test_proxy_mode_and_country_codes_are_normalized(self):
+        config = app_config.validate_config_structure(
+            {"proxy_mode": "proxyscrape", "proxyscrape_country_codes": ["sg", "ID", "sg"]}
+        )
+        self.assertEqual(config["proxyscrape_country_codes"], ["SG", "ID"])
+        with self.assertRaises(app_config.ConfigError):
+            app_config.validate_config_structure({"proxyscrape_country_codes": ["asia"]})
+
+    def test_device_code_retry_config_is_validated(self):
+        config = app_config.validate_config_structure({})
+        self.assertEqual(config["cpa_device_code_attempts"], 4)
+        self.assertEqual(config["cpa_device_code_retry_delay_sec"], 60)
+        self.assertEqual(config["cpa_device_code_max_retry_delay_sec"], 300)
+        with self.assertRaises(app_config.ConfigError):
+            app_config.validate_config_structure({"cpa_device_code_attempts": 0})
+
+    def test_proxyscrape_mode_keeps_sub2api_probe_direct(self):
+        config = {"proxy_mode": "proxyscrape", "proxy": "http://manual.invalid:80"}
+        self.assertEqual(sub2api_admin._configured_cpa_proxy(config), "")
+        config["cpa_proxy"] = "http://cpa.example:80"
+        self.assertEqual(sub2api_admin._configured_cpa_proxy(config), "http://cpa.example:80")
+
 
 class Sub2APIAdminTests(unittest.TestCase):
     def setUp(self):

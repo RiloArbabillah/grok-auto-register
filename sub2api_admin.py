@@ -31,6 +31,15 @@ DEFAULT_BASE_URL = "https://cli-chat-proxy.grok.com/v1"
 SECRET_KEY_RE = re.compile(r"(token|secret|password|cookie|key)", re.I)
 
 
+def _configured_cpa_proxy(config: dict[str, Any]) -> str:
+    explicit = str(config.get("cpa_proxy") or "").strip()
+    if explicit:
+        return explicit
+    if str(config.get("proxy_mode", "manual") or "manual").lower() == "manual":
+        return str(config.get("proxy") or "").strip()
+    return ""
+
+
 def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     config_path = Path(path).expanduser()
     if not config_path.is_file():
@@ -321,8 +330,7 @@ def preflight_cpa_account(cpa_path: str | Path, config: dict[str, Any]) -> dict[
                 access_token,
                 base_url=str(cpa.get("base_url") or DEFAULT_BASE_URL),
                 timeout=timeout,
-                proxy=str(config.get("cpa_proxy") or config.get("proxy") or "").strip()
-                or None,
+                proxy=_configured_cpa_proxy(config) or None,
             )
         except Exception:  # noqa: BLE001
             probe = {"ok": False, "status": 0, "error": "probe exception"}

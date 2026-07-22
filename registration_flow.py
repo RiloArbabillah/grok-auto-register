@@ -11,6 +11,7 @@ class RegistrationCallbacks:
 
 @dataclass
 class RegistrationOperations:
+    prepare_account_network: Callable[[int], None]
     start_browser: Callable[[], None]
     restart_browser: Callable[[], None]
     browser_missing: Callable[[], bool]
@@ -216,6 +217,7 @@ def _prepare_next_account(result, settings, callbacks, ops):
         result.cancelled = True
         return False
     try:
+        ops.prepare_account_network(result.processed_count)
         if ops.browser_missing():
             ops.start_browser()
         else:
@@ -242,6 +244,7 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
     retry_count_for_slot = 0
     last_cleanup_success_count = 0
     try:
+        ops.prepare_account_network(0)
         ops.start_browser()
         callbacks.log("[*] Browser started")
         while result.processed_count < settings.count:

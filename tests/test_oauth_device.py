@@ -8,9 +8,10 @@ from cpa_xai import oauth_device as oauth
 
 
 class Response:
-    def __init__(self, body, status=200):
+    def __init__(self, body, status=200, headers=None):
         self.body = body.encode("utf-8")
         self.status = status
+        self.headers = headers or {}
     def __enter__(self):
         return self
     def __exit__(self, *args):
@@ -65,6 +66,65 @@ class OAuthDeviceTests(unittest.TestCase):
             result = oauth.poll_device_token("d", "https://auth.x.ai/token", interval=1, expires_in=60)
         self.assertEqual(result.refresh_token, "r")
         self.assertEqual(waits, [6])
+
+    def test_device_code_429_respects_retry_after(self):
+        success = {
+            "device_code": "device",
+            "user_code": "USER-CODE",
+            "verification_uri": "https://accounts.x.ai/oauth2/device",
+        }
+        responses = [
+            (429, {"error": "slow_down"}, {"retry-after": "7"}),
+            (200, success, {}),
+        ]
+        waits = []
+        logs = []
+        discovery = {
+            "device_authorization_endpoint": "https://auth.x.ai/device",
+            "token_endpoint": "https://auth.x.ai/token",
+        }
+        with patch.object(oauth, "discover", return_value=discovery), \
+             patch.object(oauth, "_post_form_details", side_effect=responses), \
+             patch.object(oauth, "_sleep_with_cancel", side_effect=lambda seconds, cancel=None: waits.append(seconds)):
+            session = oauth.request_device_code(rate_limit_attempts=4, log=logs.append)
+        self.assertEqual(session.user_code, "USER-CODE")
+        self.assertEqual(waits, [7])
+        self.assertIn("retry 2/4 in 7s", logs[0])
+
+    def test_device_code_429_uses_bounded_exponential_fallback(self):
+        success = {"device_code": "device", "user_code": "CODE"}
+        responses = [
+            (429, {"error": "slow_down"}, {}),
+            (429, {"error": "slow_down"}, {}),
+            (200, success, {}),
+        ]
+        waits = []
+        discovery = {
+            "device_authorization_endpoint": "https://auth.x.ai/device",
+            "token_endpoint": "https://auth.x.ai/token",
+        }
+        with patch.object(oauth, "discover", return_value=discovery), \
+             patch.object(oauth, "_post_form_details", side_effect=responses), \
+             patch.object(oauth, "_sleep_with_cancel", side_effect=lambda seconds, cancel=None: waits.append(seconds)):
+            oauth.request_device_code(
+                rate_limit_attempts=3,
+                rate_limit_delay=60,
+                rate_limit_max_delay=90,
+            )
+        self.assertEqual(waits, [60, 90])
+
+    def test_device_code_stops_after_rate_limit_attempt_limit(self):
+        discovery = {
+            "device_authorization_endpoint": "https://auth.x.ai/device",
+            "token_endpoint": "https://auth.x.ai/token",
+        }
+        limited = (429, {"error": "slow_down"}, {})
+        with patch.object(oauth, "discover", return_value=discovery), \
+             patch.object(oauth, "_post_form_details", side_effect=[limited, limited]), \
+             patch.object(oauth, "_sleep_with_cancel") as sleep:
+            with self.assertRaisesRegex(oauth.OAuthDeviceError, "HTTP 429"):
+                oauth.request_device_code(rate_limit_attempts=2)
+        sleep.assert_called_once()
 
 
 if __name__ == "__main__":

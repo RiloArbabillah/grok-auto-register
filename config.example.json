@@ -19,7 +19,9 @@
   "imap_folder": "INBOX",
   "imap_address_domain": "example.com",
   "imap_address_suffix": "-grok",
+  "proxy_mode": "manual",
   "proxy": "",
+  "proxyscrape_country_codes": [],
   "enable_nsfw": true,
   "register_count": 1,
   "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
@@ -60,5 +62,8 @@
   "yyds_jwt": "",
   "cpa_oidc_request_timeout_sec": 15,
   "cpa_oidc_poll_timeout_sec": 15,
+  "cpa_device_code_attempts": 4,
+  "cpa_device_code_retry_delay_sec": 60,
+  "cpa_device_code_max_retry_delay_sec": 300,
   "grok2api_allow_legacy_full_save": false
 }

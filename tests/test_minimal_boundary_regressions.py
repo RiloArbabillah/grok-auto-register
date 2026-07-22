@@ -26,6 +26,7 @@ class Retryable(Exception):
 
 def make_ops(enable_nsfw=None, export_cpa=None):
     return RegistrationOperations(
+        prepare_account_network=lambda index: None,
         start_browser=lambda: None,
         restart_browser=lambda: None,
         browser_missing=lambda: False,

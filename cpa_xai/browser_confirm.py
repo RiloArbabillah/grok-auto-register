@@ -527,6 +527,9 @@ def mint_with_browser(
     recycle_every: int = 15,
     request_timeout_sec: float = 15.0,
     poll_timeout_sec: float = 15.0,
+    device_code_attempts: int = 4,
+    device_code_retry_delay_sec: float = 60.0,
+    device_code_max_retry_delay_sec: float = 300.0,
 ):
     from .oauth_device import OAuthDeviceError, poll_device_token, request_device_code
     from .proxyutil import proxy_log_label, resolve_proxy, set_runtime_proxy
@@ -544,6 +547,10 @@ def mint_with_browser(
             timeout=float(request_timeout_sec),
             cancel=cancel,
             retries=2,
+            rate_limit_attempts=int(device_code_attempts),
+            rate_limit_delay=float(device_code_retry_delay_sec),
+            rate_limit_max_delay=float(device_code_max_retry_delay_sec),
+            log=logger,
         )
         logger("device user_code=%s expires_in=%s proxy=%s" % (session.user_code, session.expires_in, proxy_log_label(resolved) or "(none)"))
         if work_page is None:
