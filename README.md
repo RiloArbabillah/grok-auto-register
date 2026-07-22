@@ -160,6 +160,18 @@ python grok_register_ttk.py cli
 
 Enter `start` at the prompt. Press `Ctrl+C` to request cancellation and cleanup.
 
+### Docker
+
+Build the image and start the interactive CLI:
+
+```bash
+docker compose build
+docker compose run --rm grok-register
+```
+
+The project directory is mounted at `/app`, so `config.json`, account output,
+token pools, and CPA credentials remain available on the host.
+
 Recover pending account records:
 
 ```bash

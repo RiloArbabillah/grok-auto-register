@@ -1,0 +1,14 @@
+.git
+.gitignore
+.DS_Store
+.browser_profiles
+__pycache__
+*.py[cod]
+*.log
+accounts_*.txt
+mail_credentials.txt
+config.json
+cpa_auths
+cpa_rejected
+*.pending.jsonl
+*.lock

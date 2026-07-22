@@ -204,6 +204,12 @@ def create_browser_options(browser_proxy="", extension_path=None):
     options = ChromiumOptions()
     options.auto_port()
     options.set_timeouts(base=1)
+    browser_path = str(os.environ.get("CHROMIUM_PATH", "") or "").strip()
+    if browser_path:
+        options.set_browser_path(browser_path)
+    if os.environ.get("GROK_DOCKER") == "1":
+        options.set_argument("--no-sandbox")
+        options.set_argument("--disable-dev-shm-usage")
     apply_browser_proxy_option(options, browser_proxy)
     effective_extension = _extension_path if extension_path is None else str(extension_path or "")
     if effective_extension and os.path.exists(effective_extension):
