@@ -1,6 +1,7 @@
 """Manage application defaults, persistence, normalization, and validation."""
 import json
 import os
+import re
 import tempfile
 import urllib.parse
 
@@ -19,6 +20,14 @@ DEFAULT_CONFIG = {
     "cloudmail_public_token": "",
     "cloudmail_domains": "",
     "cloudmail_path_messages": "/api/public/emailList",
+    "imap_host": "",
+    "imap_port": 993,
+    "imap_ssl": True,
+    "imap_user": "",
+    "imap_password": "",
+    "imap_folder": "INBOX",
+    "imap_address_domain": "",
+    "imap_address_suffix": "-grok",
     "proxy": "",
     "enable_nsfw": True,
     "register_count": 1,
@@ -107,7 +116,7 @@ def validate_config_structure(raw):
         "grok2api_allow_legacy_full_save", "cpa_export_enabled",
         "cpa_copy_to_hotload", "cpa_headless", "cpa_force_standalone",
         "cpa_mint_cookie_inject", "sub2api_auto_import",
-        "sub2api_preflight_enabled",
+        "sub2api_preflight_enabled", "imap_ssl",
     )
     for key in bool_keys:
         cfg[key] = _require_bool(cfg, key)
@@ -123,6 +132,7 @@ def validate_config_structure(raw):
     cfg["sub2api_preflight_retry_delay_sec"] = _require_int(cfg, "sub2api_preflight_retry_delay_sec", 0, 300)
     cfg["sub2api_readiness_timeout_sec"] = _require_int(cfg, "sub2api_readiness_timeout_sec", 0, 1800)
     cfg["sub2api_readiness_poll_sec"] = _require_int(cfg, "sub2api_readiness_poll_sec", 1, 300)
+    cfg["imap_port"] = _require_int(cfg, "imap_port", 1, 65535)
     group_ids = cfg.get("sub2api_group_ids")
     if not isinstance(group_ids, list) or not group_ids or any(type(value) is not int for value in group_ids):
         raise ConfigError("Config option sub2api_group_ids must be a non-empty integer array")
@@ -131,7 +141,7 @@ def validate_config_structure(raw):
     for key in string_keys:
         cfg[key] = _require_string(cfg, key, path=key in path_keys)
     enums = {
-        "email_provider": {"duckmail", "yyds", "cloudflare", "cloudmail"},
+        "email_provider": {"duckmail", "yyds", "cloudflare", "cloudmail", "imap"},
         "cloudflare_auth_mode": {"query-key", "bearer", "x-api-key", "x-admin-auth", "none"},
         "grok2api_pool_name": {"ssoBasic", "ssoSuper"},
     }
@@ -185,6 +195,24 @@ def validate_run_requirements(cfg):
             raise ConfigError("Cloud Mail mode is missing required options: " + ", ".join(missing))
     if provider == "yyds" and not (cfg["yyds_api_key"] or cfg["yyds_jwt"]):
         raise ConfigError("YYDS mode requires yyds_api_key or yyds_jwt")
+    if provider == "imap":
+        missing = [
+            key for key in (
+                "imap_host", "imap_user", "imap_password", "imap_folder",
+                "imap_address_domain", "imap_address_suffix",
+            )
+            if not cfg[key]
+        ]
+        if missing:
+            raise ConfigError("IMAP mode is missing required options: " + ", ".join(missing))
+        domain = cfg["imap_address_domain"].lstrip("@").lower()
+        if "." not in domain or any(char.isspace() for char in domain):
+            raise ConfigError("Config option imap_address_domain must be a valid mail domain")
+        cfg["imap_address_domain"] = domain
+        suffix = cfg["imap_address_suffix"].lower()
+        if not re.fullmatch(r"-[a-z0-9]+", suffix):
+            raise ConfigError("Config option imap_address_suffix must match -name")
+        cfg["imap_address_suffix"] = suffix
     if cfg["grok2api_auto_add_remote"]:
         missing = [
             key for key in ("grok2api_remote_base", "grok2api_remote_app_key")

@@ -732,7 +732,7 @@ class GrokRegisterGUI:
 
         add_label(0, 0, "Email provider:")
         self.email_provider_var = tk.StringVar(value=config.get("email_provider", "duckmail"))
-        self.email_provider_combo = tk_option_menu(config_frame, self.email_provider_var, ["duckmail", "yyds", "cloudflare", "cloudmail"], width=12)
+        self.email_provider_combo = tk_option_menu(config_frame, self.email_provider_var, ["duckmail", "yyds", "cloudflare", "cloudmail", "imap"], width=12)
         add_field(self.email_provider_combo, 0, 1, sticky=tk.W)
 
         add_label(0, 2, "Account count:")
@@ -814,47 +814,73 @@ class GrokRegisterGUI:
         self.cloudmail_public_token_entry = tk_entry(config_frame, textvariable=self.cloudmail_public_token_var, width=72)
         add_field(self.cloudmail_public_token_entry, 6, 1, columnspan=3)
 
-        add_label(7, 0, "Local grok2api pool:")
+        add_label(7, 0, "IMAP host / port:")
+        self.imap_host_var = tk.StringVar(value=config.get("imap_host", ""))
+        self.imap_host_entry = tk_entry(config_frame, textvariable=self.imap_host_var, width=26)
+        add_field(self.imap_host_entry, 7, 1)
+        self.imap_port_var = tk.StringVar(value=str(config.get("imap_port", 993)))
+        self.imap_port_entry = tk_entry(config_frame, textvariable=self.imap_port_var, width=8)
+        add_field(self.imap_port_entry, 7, 2, sticky=tk.W)
+
+        add_label(8, 0, "IMAP user:")
+        self.imap_user_var = tk.StringVar(value=config.get("imap_user", ""))
+        self.imap_user_entry = tk_entry(config_frame, textvariable=self.imap_user_var, width=34)
+        add_field(self.imap_user_entry, 8, 1)
+        add_label(8, 2, "IMAP password:")
+        self.imap_password_var = tk.StringVar(value=config.get("imap_password", ""))
+        self.imap_password_entry = tk_entry(config_frame, textvariable=self.imap_password_var, width=34, show="*")
+        add_field(self.imap_password_entry, 8, 3)
+
+        add_label(9, 0, "IMAP alias domain:")
+        self.imap_domain_var = tk.StringVar(value=config.get("imap_address_domain", ""))
+        self.imap_domain_entry = tk_entry(config_frame, textvariable=self.imap_domain_var, width=34)
+        add_field(self.imap_domain_entry, 9, 1)
+        add_label(9, 2, "IMAP alias suffix:")
+        self.imap_suffix_var = tk.StringVar(value=config.get("imap_address_suffix", "-grok"))
+        self.imap_suffix_entry = tk_entry(config_frame, textvariable=self.imap_suffix_var, width=34)
+        add_field(self.imap_suffix_entry, 9, 3)
+
+        add_label(10, 0, "Local grok2api pool:")
         self.grok2api_local_auto_var = tk.BooleanVar(value=bool(config.get("grok2api_auto_add_local", True)))
         self.grok2api_local_auto_check = tk_checkbutton(config_frame, variable=self.grok2api_local_auto_var)
-        add_field(self.grok2api_local_auto_check, 7, 1, sticky=tk.W)
+        add_field(self.grok2api_local_auto_check, 10, 1, sticky=tk.W)
 
-        add_label(7, 2, "grok2api pool name:")
+        add_label(10, 2, "grok2api pool name:")
         self.grok2api_pool_name_var = tk.StringVar(value=str(config.get("grok2api_pool_name", "ssoBasic")))
         self.grok2api_pool_name_combo = tk_option_menu(
             config_frame, self.grok2api_pool_name_var, ["ssoBasic", "ssoSuper"], width=12
         )
-        add_field(self.grok2api_pool_name_combo, 7, 3, sticky=tk.W)
+        add_field(self.grok2api_pool_name_combo, 10, 3, sticky=tk.W)
 
-        add_label(8, 0, "Local token.json:")
+        add_label(11, 0, "Local token.json:")
         self.grok2api_local_file_var = tk.StringVar(value=str(config.get("grok2api_local_token_file", "")))
         self.grok2api_local_file_entry = tk_entry(config_frame, textvariable=self.grok2api_local_file_var, width=72)
-        add_field(self.grok2api_local_file_entry, 8, 1, columnspan=3)
+        add_field(self.grok2api_local_file_entry, 11, 1, columnspan=3)
 
-        add_label(9, 0, "Remote grok2api pool:")
+        add_label(12, 0, "Remote grok2api pool:")
         self.grok2api_remote_auto_var = tk.BooleanVar(value=bool(config.get("grok2api_auto_add_remote", False)))
         self.grok2api_remote_auto_check = tk_checkbutton(config_frame, variable=self.grok2api_remote_auto_var)
-        add_field(self.grok2api_remote_auto_check, 9, 1, sticky=tk.W)
+        add_field(self.grok2api_remote_auto_check, 12, 1, sticky=tk.W)
 
-        add_label(10, 0, "Remote grok2api base:")
+        add_label(13, 0, "Remote grok2api base:")
         self.grok2api_remote_base_var = tk.StringVar(value=str(config.get("grok2api_remote_base", "")))
         self.grok2api_remote_base_entry = tk_entry(config_frame, textvariable=self.grok2api_remote_base_var, width=72)
-        add_field(self.grok2api_remote_base_entry, 10, 1, columnspan=3)
+        add_field(self.grok2api_remote_base_entry, 13, 1, columnspan=3)
 
-        add_label(11, 0, "Remote grok2api app_key:")
+        add_label(14, 0, "Remote grok2api app_key:")
         self.grok2api_remote_key_var = tk.StringVar(value=str(config.get("grok2api_remote_app_key", "")))
         self.grok2api_remote_key_entry = tk_entry(config_frame, textvariable=self.grok2api_remote_key_var, width=72)
-        add_field(self.grok2api_remote_key_entry, 11, 1, columnspan=3)
+        add_field(self.grok2api_remote_key_entry, 14, 1, columnspan=3)
 
-        add_label(12, 0, "OIDC / CPA:")
+        add_label(15, 0, "OIDC / CPA:")
         self.cpa_export_var = tk.BooleanVar(value=bool(config.get("cpa_export_enabled", False)))
         self.cpa_export_check = tk_checkbutton(config_frame, text="Export CPA xAI OIDC after registration", variable=self.cpa_export_var)
-        add_field(self.cpa_export_check, 12, 1, sticky=tk.W)
+        add_field(self.cpa_export_check, 15, 1, sticky=tk.W)
 
-        add_label(12, 2, "CPA output directory:")
+        add_label(15, 2, "CPA output directory:")
         self.cpa_auth_dir_var = tk.StringVar(value=str(config.get("cpa_auth_dir", "./cpa_auths")))
         self.cpa_auth_dir_entry = tk_entry(config_frame, textvariable=self.cpa_auth_dir_var, width=34)
-        add_field(self.cpa_auth_dir_entry, 12, 3)
+        add_field(self.cpa_auth_dir_entry, 15, 3)
 
         btn_frame = tk.Frame(main_frame, bg=UI_BG)
         btn_frame.grid(row=1, column=0, sticky=tk.EW, pady=(0, 6))
@@ -976,6 +1002,11 @@ class GrokRegisterGUI:
         config["cloudmail_api_base"] = self.cloudmail_api_base_var.get().strip()
         config["cloudmail_public_token"] = self.cloudmail_public_token_var.get().strip()
         config["cloudmail_domains"] = self.cloudmail_domains_var.get().strip()
+        config["imap_host"] = self.imap_host_var.get().strip()
+        config["imap_user"] = self.imap_user_var.get().strip()
+        config["imap_password"] = self.imap_password_var.get()
+        config["imap_address_domain"] = self.imap_domain_var.get().strip()
+        config["imap_address_suffix"] = self.imap_suffix_var.get().strip() or "-grok"
         config["grok2api_auto_add_local"] = bool(self.grok2api_local_auto_var.get())
         config["grok2api_local_token_file"] = self.grok2api_local_file_var.get().strip()
         config["grok2api_pool_name"] = self.grok2api_pool_name_var.get().strip() or "ssoBasic"
@@ -991,6 +1022,7 @@ class GrokRegisterGUI:
             config["cloudflare_path_token"] = raw_paths[2] if raw_paths[2].startswith("/") else ("/" + raw_paths[2])
             config["cloudflare_path_messages"] = raw_paths[3] if raw_paths[3].startswith("/") else ("/" + raw_paths[3])
         try:
+            config["imap_port"] = int(self.imap_port_var.get())
             count = int(self.count_var.get())
             config["register_count"] = count
             validated = validate_run_requirements(config)

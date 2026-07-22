@@ -1,8 +1,14 @@
 """Create temporary mailboxes, poll messages, and extract verification codes."""
+import html
+import imaplib
 import re
 import secrets
 import string
 import time
+from email import policy
+from email.header import decode_header
+from email.parser import BytesParser
+from email.utils import getaddresses
 from typing import Any, Dict, List, Optional, Tuple
 
 from curl_cffi import requests
@@ -15,6 +21,7 @@ YYDS_API_BASE = "https://maliapi.215.im/v1"
 config = {}
 _cf_domain_index = 0
 _cloudmail_domain_index = 0
+_imap_aliases_in_run = set()
 _OWN_NAMES = {'cloudmail_get_email_and_token', 'get_messages', 'cloudflare_get_messages', 'get_yyds_api_key', 'yyds_generate_username', 'yyds_get_domains', 'yyds_get_email_and_token', 'yyds_get_oai_code', 'get_email_provider', 'cloudflare_get_domains', 'extract_verification_code', 'get_cloudflare_api_base', 'cloudflare_apply_auth_params', 'duckmail_get_oai_code', 'create_account', 'get_yyds_jwt', 'get_message_detail', 'yyds_create_account', 'get_duckmail_api_key', 'get_cloudflare_path', 'cloudflare_create_account', 'cloudflare_get_token', 'cloudflare_get_oai_code', 'get_cloudmail_public_token', 'generate_username', 'yyds_get_message_detail', 'cloudflare_next_default_domain', 'yyds_get_messages', 'yyds_get_token', 'get_domains', 'get_token', 'cloudflare_create_temp_address', 'get_cloudflare_api_key', 'get_cloudmail_path', 'get_cloudmail_api_base', 'cloudmail_get_oai_code', 'cloudflare_build_headers', 'cloudflare_is_admin_create_path', 'cloudmail_next_domain', 'cloudflare_get_message_detail', 'cloudmail_get_messages', 'get_user_agent', 'yyds_pick_domain', '_pick_list_payload', 'get_email_and_token', 'get_oai_code', 'get_cloudflare_auth_mode', 'pick_domain'}
 
 
@@ -489,11 +496,28 @@ def duckmail_get_oai_code(
     raise Exception(f"Verification message not received within {timeout}s")
 
 def extract_verification_code(text, subject=""):
+    contextual_code = (
+        r"(?:verification|confirmation)\s+code(?:\s+is)?\s*[:#-]?\s*"
+        r"([A-Z0-9]{3}-[A-Z0-9]{3})\b"
+    )
     if subject:
+        match = re.search(contextual_code, subject, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
         match = re.search(r"^([A-Z0-9]{3}-[A-Z0-9]{3})\s+xAI", subject, re.IGNORECASE)
         if match:
-            return match.group(1)
-    match = re.search(r"\b([A-Z0-9]{3}-[A-Z0-9]{3})\b", text, re.IGNORECASE)
+            return match.group(1).upper()
+    match = re.search(contextual_code, text, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    match = re.search(
+        r"your\s+code(?:\s+is)?\s*[:#-]?\s*([A-Z0-9]{3}-[A-Z0-9]{3})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if match:
+        return match.group(1).upper()
+    match = re.search(r"\b([A-Z0-9]{3}-[A-Z0-9]{3})\b", text)
     if match:
         return match.group(1)
     patterns = [
@@ -506,6 +530,269 @@ def extract_verification_code(text, subject=""):
         if match:
             return match.group(1)
     return None
+
+
+_IMAP_GIVEN_NAMES = (
+    "adi", "aditya", "agung", "ahmad", "aldi", "andra", "andi", "arif",
+    "arya", "bagas", "bayu", "bima", "dimas", "eka", "fajar", "farhan",
+    "galih", "hadi", "indra", "irfan", "joko", "kevin", "maulana", "nanda",
+    "putra", "rafi", "rahmat", "rama", "rangga", "rehan", "reza", "rizky",
+    "satria", "teguh", "wahyu", "yoga", "yudha", "zaki",
+)
+
+_IMAP_FAMILY_NAMES = (
+    "adiputra", "ananda", "ardiansyah", "cahyadi", "darmawan", "firmansyah",
+    "gunawan", "hakim", "haryanto", "hermawan", "hidayat", "kurniawan",
+    "kusuma", "mahardika", "nugraha", "nugroho", "pambudi", "permana",
+    "pradana", "pranata", "prasetyo", "pratama", "ramadhan", "saputra",
+    "setiawan", "siregar", "sugiharto", "suryadi", "susanto", "syahputra",
+    "tanjung", "utomo", "wijaya", "wibowo", "widyanto", "yulianto",
+)
+
+
+def get_imap_host():
+    return str(config.get("imap_host", "") or "").strip()
+
+
+def get_imap_port():
+    return int(config.get("imap_port", 993) or 993)
+
+
+def get_imap_user():
+    return str(config.get("imap_user", "") or "").strip()
+
+
+def get_imap_password():
+    return str(config.get("imap_password", "") or "")
+
+
+def get_imap_folder():
+    return str(config.get("imap_folder", "INBOX") or "INBOX").strip()
+
+
+def _imap_connect(readonly=True, timeout=30):
+    host = get_imap_host()
+    port = get_imap_port()
+    if bool(config.get("imap_ssl", True)):
+        client = imaplib.IMAP4_SSL(host, port, timeout=timeout)
+    else:
+        client = imaplib.IMAP4(host, port, timeout=timeout)
+    try:
+        status, _ = client.login(get_imap_user(), get_imap_password())
+        if status != "OK":
+            raise RuntimeError("IMAP login failed")
+        status, _ = client.select(get_imap_folder(), readonly=readonly)
+        if status != "OK":
+            raise RuntimeError(f"Unable to select IMAP folder {get_imap_folder()}")
+        return client
+    except Exception:
+        try:
+            client.logout()
+        except Exception:
+            pass
+        raise
+
+
+def _imap_logout(client):
+    if client is None:
+        return
+    try:
+        client.close()
+    except Exception:
+        pass
+    try:
+        client.logout()
+    except Exception:
+        pass
+
+
+def _imap_uidvalidity(client):
+    _, values = client.response("UIDVALIDITY")
+    raw = b" ".join(value for value in (values or []) if isinstance(value, bytes))
+    match = re.search(rb"\d+", raw)
+    if not match:
+        raise RuntimeError("IMAP server did not provide UIDVALIDITY")
+    return int(match.group(0))
+
+
+def _imap_latest_uid(client):
+    status, data = client.uid("search", None, "ALL")
+    if status != "OK":
+        raise RuntimeError("Unable to read IMAP UID baseline")
+    raw = b" ".join(value for value in (data or []) if isinstance(value, bytes))
+    values = [int(value) for value in raw.split() if value.isdigit()]
+    return max(values) if values else 0
+
+
+def _imap_state_token(uidvalidity, last_uid):
+    return f"imap:v1:{int(uidvalidity)}:{int(last_uid)}"
+
+
+def _parse_imap_state_token(token):
+    parts = str(token or "").split(":")
+    if len(parts) != 4 or parts[:2] != ["imap", "v1"]:
+        raise ValueError("Invalid IMAP mailbox state token")
+    try:
+        return int(parts[2]), int(parts[3])
+    except ValueError as exc:
+        raise ValueError("Invalid IMAP mailbox state token") from exc
+
+
+def generate_imap_alias():
+    domain = str(config.get("imap_address_domain", "") or "").strip().lstrip("@").lower()
+    suffix = str(config.get("imap_address_suffix", "-grok") or "-grok").strip().lower()
+    combinations = len(_IMAP_GIVEN_NAMES) * len(_IMAP_FAMILY_NAMES)
+    for _ in range(combinations):
+        local = f"{secrets.choice(_IMAP_GIVEN_NAMES)}-{secrets.choice(_IMAP_FAMILY_NAMES)}{suffix}"
+        address = f"{local}@{domain}"
+        if address not in _imap_aliases_in_run:
+            _imap_aliases_in_run.add(address)
+            return address
+    raise RuntimeError("No unused IMAP human-name aliases remain in this process")
+
+
+def imap_get_email_and_token():
+    client = None
+    try:
+        client = _imap_connect(readonly=True)
+        token = _imap_state_token(_imap_uidvalidity(client), _imap_latest_uid(client))
+    finally:
+        _imap_logout(client)
+    return generate_imap_alias(), token
+
+
+def _decode_header_text(value):
+    parts = []
+    for fragment, charset in decode_header(str(value or "")):
+        if isinstance(fragment, bytes):
+            parts.append(fragment.decode(charset or "utf-8", errors="replace"))
+        else:
+            parts.append(fragment)
+    return "".join(parts)
+
+
+def _imap_message_matches_recipient(message, address):
+    target = address.strip().lower()
+    recipient_headers = (
+        "to", "delivered-to", "x-original-to", "envelope-to", "x-envelope-to",
+        "resent-to",
+    )
+    values = []
+    for name in recipient_headers:
+        values.extend(message.get_all(name, []))
+    parsed = [item.lower() for _, item in getaddresses(values) if item]
+    if target in parsed:
+        return True
+    routing_text = "\n".join(_decode_header_text(value) for value in values)
+    routing_text += "\n" + "\n".join(message.get_all("received", []))
+    return target in routing_text.lower()
+
+
+def _imap_message_text(message):
+    parts = []
+    candidates = message.walk() if message.is_multipart() else [message]
+    for part in candidates:
+        if part.is_multipart() or part.get_content_disposition() == "attachment":
+            continue
+        if part.get_content_type() not in {"text/plain", "text/html"}:
+            continue
+        try:
+            value = part.get_content()
+        except Exception:
+            payload = part.get_payload(decode=True) or b""
+            value = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        if part.get_content_type() == "text/html":
+            value = html.unescape(re.sub(r"<[^>]+>", " ", value))
+        parts.append(value)
+    return "\n".join(parts)
+
+
+def _imap_fetch_new_messages(client, baseline_uid):
+    status, data = client.uid("search", None, "UID", f"{baseline_uid + 1}:*")
+    if status != "OK":
+        raise RuntimeError("Unable to search IMAP messages")
+    raw = b" ".join(value for value in (data or []) if isinstance(value, bytes))
+    for uid in (value for value in raw.split() if value.isdigit()):
+        status, response = client.uid("fetch", uid, "(BODY.PEEK[])")
+        if status != "OK":
+            continue
+        message_bytes = next(
+            (item[1] for item in (response or []) if isinstance(item, tuple) and isinstance(item[1], bytes)),
+            None,
+        )
+        if message_bytes:
+            yield int(uid), BytesParser(policy=policy.default).parsebytes(message_bytes)
+
+
+def _imap_raise_if_cancelled(cancel_callback):
+    helper = globals().get("raise_if_cancelled")
+    if callable(helper):
+        helper(cancel_callback)
+    elif cancel_callback and cancel_callback():
+        raise RuntimeError("Registration cancelled")
+
+
+def _imap_sleep(seconds, cancel_callback):
+    helper = globals().get("sleep_with_cancel")
+    if callable(helper):
+        helper(seconds, cancel_callback)
+    elif seconds > 0:
+        time.sleep(seconds)
+
+
+def imap_get_oai_code(
+    dev_token,
+    email,
+    timeout=180,
+    poll_interval=3,
+    log_callback=None,
+    cancel_callback=None,
+    resend_callback=None,
+):
+    expected_uidvalidity, baseline_uid = _parse_imap_state_token(dev_token)
+    deadline = time.time() + timeout
+    resend_at = time.time() + min(25, max(5, timeout / 3))
+    resent = False
+    while time.time() < deadline:
+        _imap_raise_if_cancelled(cancel_callback)
+        client = None
+        try:
+            client = _imap_connect(readonly=True)
+            current_uidvalidity = _imap_uidvalidity(client)
+            if current_uidvalidity != expected_uidvalidity:
+                raise RuntimeError("IMAP UIDVALIDITY changed; refusing to read messages without a safe baseline")
+            for uid, message in _imap_fetch_new_messages(client, baseline_uid):
+                if not _imap_message_matches_recipient(message, email):
+                    continue
+                subject = _decode_header_text(message.get("subject", ""))
+                code = extract_verification_code(_imap_message_text(message), subject)
+                if log_callback:
+                    log_callback(f"[Debug] IMAP message matched alias: uid={uid} subject={subject}")
+                if code:
+                    if log_callback:
+                        log_callback(f"[*] Extracted verification code from IMAP: {code}")
+                    return code
+        except RuntimeError as exc:
+            if "UIDVALIDITY changed" in str(exc):
+                raise
+            if log_callback:
+                log_callback(f"[Debug] IMAP polling failed; retrying: {exc}")
+        except (imaplib.IMAP4.error, OSError) as exc:
+            if log_callback:
+                log_callback(f"[Debug] IMAP polling failed; retrying: {exc}")
+        finally:
+            _imap_logout(client)
+        if not resent and resend_callback and time.time() >= resend_at:
+            try:
+                resend_callback()
+                resent = True
+                if log_callback:
+                    log_callback("[*] Requested a new verification code")
+            except Exception as exc:
+                if log_callback:
+                    log_callback(f"[Debug] Failed to request a new verification code: {exc}")
+        _imap_sleep(poll_interval, cancel_callback)
+    raise Exception(f"IMAP verification message not received within {timeout}s")
 
 def generate_username(length=10):
     chars = string.ascii_lowercase + string.digits
@@ -553,6 +840,8 @@ def get_duckmail_api_key():
 
 def get_email_and_token(api_key=None):
     provider = get_email_provider()
+    if provider == "imap":
+        return imap_get_email_and_token()
     if provider == "yyds":
         return yyds_get_email_and_token(api_key=api_key, jwt=get_yyds_jwt())
     if provider == "cloudmail":
@@ -621,6 +910,16 @@ def get_oai_code(
     resend_callback=None,
 ):
     provider = get_email_provider()
+    if provider == "imap":
+        return imap_get_oai_code(
+            dev_token,
+            email,
+            timeout=timeout,
+            poll_interval=poll_interval,
+            log_callback=log_callback,
+            cancel_callback=cancel_callback,
+            resend_callback=resend_callback,
+        )
     if provider == "yyds":
         return yyds_get_oai_code(
             dev_token,

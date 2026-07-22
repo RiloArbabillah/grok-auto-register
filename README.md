@@ -9,7 +9,7 @@ Grok Register is a Python automation toolkit for workflow research, test-environ
 ## Features
 
 - Real Chromium or Chrome registration flow with verification code, profile, Turnstile, and SSO cookie handling.
-- Temporary email support for DuckMail, YYDS, Cloudflare temporary mail, and Cloud Mail catch-all inboxes.
+- Temporary email support for DuckMail, YYDS, Cloudflare temporary mail, Cloud Mail, and read-only IMAP catch-all inboxes.
 - Immediate account output with atomic pending recovery when the main result cannot be written.
 - Optional local and remote grok2api token pool updates.
 - Optional CPA xAI OIDC credential export and CLIProxyAPI hotload copying.
@@ -42,13 +42,33 @@ Edit `config.json` before starting. This file may contain API keys, JWTs, proxie
 
 | Option | Description |
 | --- | --- |
-| `email_provider` | `duckmail`, `yyds`, `cloudflare`, or `cloudmail` |
+| `email_provider` | `duckmail`, `yyds`, `cloudflare`, `cloudmail`, or `imap` |
 | `register_count` | Number of accounts to process |
 | `proxy` | Optional main registration proxy |
 | `enable_nsfw` | Attempt to enable NSFW after registration |
 | `user_agent` | Browser and HTTP User-Agent |
 
 Cloudflare temporary mail uses `cloudflare_api_base`, `cloudflare_auth_mode`, the configured endpoint paths, and `defaultDomains`. YYDS requires `yyds_api_key` or `yyds_jwt`. Cloud Mail requires `cloudmail_api_base`, `cloudmail_public_token`, and `cloudmail_domains`.
+
+### IMAP catch-all inbox
+
+The IMAP provider generates human-name aliases such as `putra-pratama-grok@example.com`. It records the mailbox UID baseline before registration and only scans newer messages for the exact alias, preventing old messages from being reused when a human name repeats.
+
+```json
+{
+  "email_provider": "imap",
+  "imap_host": "imap.example.com",
+  "imap_port": 993,
+  "imap_ssl": true,
+  "imap_user": "inbox@example.com",
+  "imap_password": "your-password",
+  "imap_folder": "INBOX",
+  "imap_address_domain": "example.com",
+  "imap_address_suffix": "-grok"
+}
+```
+
+The mailbox is selected read-only and messages are fetched with `BODY.PEEK[]`; the provider does not delete messages or change flags. The password remains in ignored `config.json` and is never included in `mail_credentials.txt` or logs.
 
 ### grok2api pools
 
@@ -162,7 +182,7 @@ grok_register_ttk.py       GUI, CLI, and compatibility entry point
 registration_flow.py       Shared batch orchestration
 registration_browser.py    Registration page automation
 browser_runtime.py         HTTP, proxy, and Chromium setup
-mail_service.py            Temporary email providers
+mail_service.py            Temporary email and read-only IMAP providers
 account_outputs.py         Account, pending, and token pool persistence
 app_config.py              Defaults, loading, saving, and validation
 cpa_export.py              CPA export and Sub2API distribution hook
