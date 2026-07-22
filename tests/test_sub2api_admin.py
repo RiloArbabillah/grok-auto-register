@@ -50,6 +50,27 @@ class Sub2APIConfigTests(unittest.TestCase):
         self.assertTrue(config["sub2api_preflight_enabled"])
         self.assertEqual(config["sub2api_group_ids"], [5])
 
+    def test_account_interval_minutes_is_validated(self):
+        self.assertEqual(app_config.validate_config_structure({})["account_interval_minutes"], 5)
+        self.assertEqual(
+            app_config.validate_config_structure({"account_interval_minutes": 0})[
+                "account_interval_minutes"
+            ],
+            0,
+        )
+        self.assertEqual(
+            app_config.validate_config_structure({"account_interval_minutes": 1440})[
+                "account_interval_minutes"
+            ],
+            1440,
+        )
+        for invalid in (-1, 1441, 2.5, "5"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(app_config.ConfigError):
+                    app_config.validate_config_structure(
+                        {"account_interval_minutes": invalid}
+                    )
+
     def test_enabled_auto_import_requires_url_and_admin_key(self):
         with self.assertRaises(app_config.ConfigError):
             app_config.validate_run_requirements({"sub2api_auto_import": True})

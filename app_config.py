@@ -33,6 +33,7 @@ DEFAULT_CONFIG = {
     "proxyscrape_country_codes": [],
     "enable_nsfw": True,
     "register_count": 1,
+    "account_interval_minutes": 5,
     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
     "grok2api_auto_add_local": False,
     "grok2api_local_token_file": "",
@@ -126,6 +127,7 @@ def validate_config_structure(raw):
     for key in bool_keys:
         cfg[key] = _require_bool(cfg, key)
     cfg["register_count"] = _require_int(cfg, "register_count", 1, 2500)
+    cfg["account_interval_minutes"] = _require_int(cfg, "account_interval_minutes", 0, 1440)
     cfg["cpa_mint_timeout_sec"] = _require_int(cfg, "cpa_mint_timeout_sec", 30, 1800)
     cfg["cpa_oidc_request_timeout_sec"] = _require_int(cfg, "cpa_oidc_request_timeout_sec", 3, 120)
     cfg["cpa_oidc_poll_timeout_sec"] = _require_int(cfg, "cpa_oidc_poll_timeout_sec", 3, 120)

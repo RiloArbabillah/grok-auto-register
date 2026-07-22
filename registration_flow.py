@@ -60,6 +60,7 @@ class RegistrationSettings:
     max_mail_retry: int = 3
     max_slot_retry: int = 3
     cleanup_interval: int = 5
+    account_interval_minutes: int = 5
 
 
 @dataclass
@@ -210,13 +211,18 @@ def _run_cleanup_safely(ops, callbacks, reason):
         return False
 
 
-def _prepare_next_account(result, settings, callbacks, ops):
+def _prepare_next_account(result, settings, callbacks, ops, slot_completed=False):
     if result.processed_count >= settings.count:
         return False
     if callbacks.cancelled():
         result.cancelled = True
         return False
     try:
+        if slot_completed and settings.account_interval_minutes > 0:
+            callbacks.log(
+                f"[*] Waiting {settings.account_interval_minutes} minute(s) before the next account"
+            )
+            ops.sleep(settings.account_interval_minutes * 60)
         ops.prepare_account_network(result.processed_count)
         if ops.browser_missing():
             ops.start_browser()
@@ -231,7 +237,8 @@ def _prepare_next_account(result, settings, callbacks, ops):
 
 
 def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interval=5,
-              max_slot_retry=3, max_mail_retry=3, settings=None):
+              max_slot_retry=3, max_mail_retry=3, account_interval_minutes=5,
+              settings=None):
     if settings is None:
         settings = RegistrationSettings(
             count=int(count),
@@ -239,6 +246,7 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
             cleanup_interval=int(cleanup_interval),
             max_slot_retry=int(max_slot_retry),
             max_mail_retry=int(max_mail_retry),
+            account_interval_minutes=int(account_interval_minutes),
         )
     result = BatchResult()
     retry_count_for_slot = 0
@@ -252,6 +260,7 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
                 result.cancelled = True
                 break
             callbacks.log(f"--- Starting account {result.processed_count + 1}/{settings.count} ---")
+            processed_before_slot = result.processed_count
             account = None
             output = None
             continue_batch = True
@@ -325,7 +334,13 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
 
             if not continue_batch or result.cancelled:
                 break
-            if not _prepare_next_account(result, settings, callbacks, ops):
+            if not _prepare_next_account(
+                result,
+                settings,
+                callbacks,
+                ops,
+                slot_completed=result.processed_count > processed_before_slot,
+            ):
                 break
     finally:
         _run_cleanup_safely(ops, callbacks, "Task complete")

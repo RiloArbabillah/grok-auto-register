@@ -44,6 +44,7 @@ Edit `config.json` before starting. This file may contain API keys, JWTs, proxie
 | --- | --- |
 | `email_provider` | `duckmail`, `yyds`, `cloudflare`, `cloudmail`, or `imap` |
 | `register_count` | Number of accounts to process |
+| `account_interval_minutes` | Cooldown after each completed account slot; default `5`, set `0` to disable |
 | `proxy` | Optional main registration proxy |
 | `proxy_mode` | `off`, `manual`, or opt-in `proxyscrape` browser proxy selection |
 | `proxyscrape_country_codes` | Optional ISO country-code list; empty accepts all countries |

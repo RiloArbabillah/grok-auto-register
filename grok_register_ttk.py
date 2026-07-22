@@ -673,6 +673,7 @@ def run_registration_common(count, log_callback, cancel_callback, accounts_outpu
         cleanup_interval=MEMORY_CLEANUP_INTERVAL,
         max_slot_retry=3,
         max_mail_retry=3,
+        account_interval_minutes=int(config.get("account_interval_minutes", 5)),
     )
 
 
@@ -905,6 +906,26 @@ class GrokRegisterGUI:
         self.cpa_auth_dir_entry = tk_entry(config_frame, textvariable=self.cpa_auth_dir_var, width=34)
         add_field(self.cpa_auth_dir_entry, 15, 3)
 
+        add_label(16, 0, "Account interval (minutes):")
+        self.account_interval_var = tk.StringVar(
+            value=str(config.get("account_interval_minutes", 5))
+        )
+        self.account_interval_spinbox = tk.Spinbox(
+            config_frame,
+            from_=0,
+            to=1440,
+            width=8,
+            textvariable=self.account_interval_var,
+            bg=UI_ENTRY_BG,
+            fg=UI_FG,
+            insertbackground=UI_FG,
+            buttonbackground=UI_BUTTON_BG,
+            disabledbackground="#2f2f2f",
+            disabledforeground=UI_MUTED_FG,
+            relief=tk.SOLID,
+        )
+        add_field(self.account_interval_spinbox, 16, 1, sticky=tk.W)
+
         btn_frame = tk.Frame(main_frame, bg=UI_BG)
         btn_frame.grid(row=1, column=0, sticky=tk.EW, pady=(0, 6))
         self.start_btn = tk_button(btn_frame, text="Start", command=self.start_registration)
@@ -1054,6 +1075,7 @@ class GrokRegisterGUI:
             config["imap_port"] = int(self.imap_port_var.get())
             count = int(self.count_var.get())
             config["register_count"] = count
+            config["account_interval_minutes"] = int(self.account_interval_var.get())
             validated = validate_run_requirements(config)
             config.clear()
             config.update(validated)

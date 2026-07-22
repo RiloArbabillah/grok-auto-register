@@ -82,12 +82,62 @@ class RegistrationFlowTests(unittest.TestCase):
 
     def test_network_is_prepared_once_for_each_account_index(self):
         fake = FakeOps()
-        batch = run_batch(2, self.callbacks(), lambda *args: None, fake.operations())
+        batch = run_batch(
+            2, self.callbacks(), lambda *args: None, fake.operations(),
+            account_interval_minutes=0,
+        )
         self.assertEqual(batch.success_count, 2)
         self.assertEqual(
             [event for event in fake.events if isinstance(event, tuple) and event[0] == "network"],
             [("network", 0), ("network", 1)],
         )
+
+    def test_interval_waits_after_completed_slot_but_not_after_last_account(self):
+        fake = FakeOps()
+        batch = run_batch(
+            2, self.callbacks(), lambda *args: None, fake.operations(),
+            account_interval_minutes=5,
+        )
+        self.assertEqual(batch.success_count, 2)
+        self.assertEqual(fake.events.count(("sleep", 300)), 1)
+
+    def test_interval_waits_after_failed_slot(self):
+        fake = FakeOps()
+        ops = fake.operations()
+        calls = {"count": 0}
+
+        def open_signup_page():
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("registration failed")
+            fake.events.append("open")
+
+        ops.open_signup_page = open_signup_page
+        batch = run_batch(
+            2, self.callbacks(), lambda *args: None, ops,
+            account_interval_minutes=5,
+        )
+        self.assertEqual(batch.processed_count, 2)
+        self.assertEqual(fake.events.count(("sleep", 300)), 1)
+
+    def test_retry_same_slot_does_not_wait_for_account_interval(self):
+        fake = FakeOps()
+        ops = fake.operations()
+        calls = {"count": 0}
+
+        def open_signup_page():
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise Retryable("retry this slot")
+            fake.events.append("open")
+
+        ops.open_signup_page = open_signup_page
+        batch = run_batch(
+            1, self.callbacks(), lambda *args: None, ops,
+            account_interval_minutes=5,
+        )
+        self.assertEqual(batch.success_count, 1)
+        self.assertNotIn(("sleep", 300), fake.events)
 
     def test_network_preparation_failure_stops_before_browser_start(self):
         fake = FakeOps()
