@@ -118,6 +118,13 @@ Common options:
 | `sub2api_concurrency` | Concurrency assigned when creating a new Sub2API account |
 | `sub2api_priority` | Priority assigned when creating a new Sub2API account |
 | `sub2api_timeout_sec` | Timeout for each Sub2API admin request |
+| `sub2api_preflight_enabled` | Whether to test the Grok Responses API before importing into Sub2API |
+| `sub2api_preflight_timeout_sec` | Timeout for the pre-import Responses API test |
+| `sub2api_preflight_attempts` | Maximum Responses API attempts before rejecting an account |
+| `sub2api_preflight_retry_delay_sec` | Delay between transient preflight failures |
+| `sub2api_rejected_dir` | Directory for CPA files that do not pass strict preflight |
+| `sub2api_readiness_timeout_sec` | Maximum wait for the post-import Grok usage probe |
+| `sub2api_readiness_poll_sec` | Interval between read-only readiness checks |
 | `concurrent_count` | Number of concurrent workers; `1` runs sequentially in one browser, `>1` runs multiple browsers concurrently |
 | `browser_restart_every` | Extra periodic restart notice interval in accounts; the browser still fully restarts after every account to avoid session residue |
 | `cpa_export_enabled` | Whether to export CPA xAI credentials after successful registration |
@@ -215,7 +222,14 @@ Sub2API connection settings and secrets are read only from `config.json`:
   "sub2api_group_ids": [5],
   "sub2api_concurrency": 1,
   "sub2api_priority": 1,
-  "sub2api_timeout_sec": 30
+  "sub2api_timeout_sec": 30,
+  "sub2api_preflight_enabled": true,
+  "sub2api_preflight_timeout_sec": 30,
+  "sub2api_preflight_attempts": 3,
+  "sub2api_preflight_retry_delay_sec": 5,
+  "sub2api_rejected_dir": "cpa_rejected",
+  "sub2api_readiness_timeout_sec": 30,
+  "sub2api_readiness_poll_sec": 2
 }
 ```
 
@@ -238,6 +252,10 @@ python3 sub2api_admin.py list-grok
 ```
 
 Imports are upserts. A matching account receives merged credentials only, preserving its existing groups, concurrency, priority, status, and metadata. Ambiguous duplicate matches stop without changing any account.
+
+Before an apply, the importer sends a minimal Grok Responses API request. Only HTTP 200 accounts are imported. HTTP 402 is rejected immediately; transient 403, 408, 425, 429, network errors, and 5xx responses are retried up to three times with a five-second delay. Any account that never returns 200 is moved to `sub2api_rejected_dir` and excluded from hotload copies and server uploads.
+
+After an apply, the importer waits up to 30 seconds for Sub2API's read-only Grok usage probe. Readiness is reported separately from import success as `ready` (200), `payment_required` (402), `forbidden` (403), `rate_limited` (429), `unexpected`, or `pending`. No refresh or test request is triggered by this check.
 
 ## Running
 
@@ -289,6 +307,7 @@ Generated during a run:
 - `accounts_*.txt`: successful account, password, and SSO token records.
 - `mail_credentials.txt`: temporary email credentials.
 - `cpa_auths/`: CPA xAI credential JSON files when `cpa_export_enabled` is enabled.
+- `cpa_rejected/`: CPA credentials excluded because strict Responses API preflight never returned HTTP 200.
 - `.browser_profiles/`: temporary browser profiles for concurrent workers, generated during runtime and ignored by Git.
 - `*.log`: optional log files.
 

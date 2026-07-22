@@ -189,27 +189,7 @@ def export_cpa_xai_for_account(
         except Exception:
             pass
 
-    if result.get("ok") and result.get("path") and cfg.get("cpa_copy_to_hotload", False) and cpa_dir:
-        try:
-            cpa_dir.mkdir(parents=True, exist_ok=True)
-            src = Path(result["path"])
-            dst = cpa_dir / src.name
-            shutil.copy2(src, dst)
-            os.chmod(dst, 0o600)
-            result["cpa_path"] = str(dst)
-            log(f"[cpa] hotload copy -> {dst}")
-        except Exception as e:  # noqa: BLE001
-            log(f"[cpa] hotload copy failed: {e}")
-            result["cpa_copy_error"] = str(e)
-
-    if result.get("ok") and result.get("path") and cfg.get("cpa_server_host"):
-        try:
-            from grok_register_ttk import upload_to_cpa_server
-            upload_to_cpa_server(result["path"], log_callback=log)
-        except Exception as e:  # noqa: BLE001
-            log(f"[cpa] server upload failed: {e}")
-            result["upload_error"] = str(e)
-
+    allow_distribution = True
     if result.get("ok") and result.get("path"):
         if cfg.get("sub2api_auto_import", False):
             try:
@@ -217,10 +197,30 @@ def export_cpa_xai_for_account(
 
                 sub2api_result = sync_cpa_account(result["path"], cfg)
                 result["sub2api_import"] = sub2api_result
-                log(
-                    f"[cpa] Sub2API {sub2api_result.get('action')}: "
-                    f"account_id={sub2api_result.get('account_id')}"
-                )
+                preflight = sub2api_result.get("preflight") or {}
+                if (
+                    sub2api_result.get("action") == "skipped"
+                    and sub2api_result.get("reason") == "preflight_rejected"
+                ):
+                    allow_distribution = False
+                    result["rejected_path"] = sub2api_result.get("rejected_path")
+                    result["path"] = sub2api_result.get("rejected_path")
+                    log(
+                        f"[cpa] Sub2API skipped: preflight rejected "
+                        f"state={preflight.get('state')} "
+                        f"status={preflight.get('status_code')} "
+                        f"code={preflight.get('code', '')} "
+                        f"rejected={result.get('rejected_path')}"
+                    )
+                else:
+                    readiness = sub2api_result.get("readiness") or {}
+                    log(
+                        f"[cpa] Sub2API {sub2api_result.get('action')}: "
+                        f"account_id={sub2api_result.get('account_id')} "
+                        f"preflight={preflight.get('state', 'unknown')} "
+                        f"readiness={readiness.get('state', 'unknown')} "
+                        f"status={readiness.get('status_code')}"
+                    )
             except Exception as e:  # noqa: BLE001
                 result["sub2api_import"] = {
                     "ok": False,
@@ -234,6 +234,38 @@ def export_cpa_xai_for_account(
                 "action": "skipped",
                 "reason": "disabled",
             }
+
+    if (
+        allow_distribution
+        and result.get("ok")
+        and result.get("path")
+        and cfg.get("cpa_copy_to_hotload", False)
+        and cpa_dir
+    ):
+        try:
+            cpa_dir.mkdir(parents=True, exist_ok=True)
+            src = Path(result["path"])
+            dst = cpa_dir / src.name
+            shutil.copy2(src, dst)
+            os.chmod(dst, 0o600)
+            result["cpa_path"] = str(dst)
+            log(f"[cpa] hotload copy -> {dst}")
+        except Exception as e:  # noqa: BLE001
+            log(f"[cpa] hotload copy failed: {e}")
+            result["cpa_copy_error"] = str(e)
+
+    if (
+        allow_distribution
+        and result.get("ok")
+        and result.get("path")
+        and cfg.get("cpa_server_host")
+    ):
+        try:
+            from grok_register_ttk import upload_to_cpa_server
+            upload_to_cpa_server(result["path"], log_callback=log)
+        except Exception as e:  # noqa: BLE001
+            log(f"[cpa] server upload failed: {e}")
+            result["upload_error"] = str(e)
 
     # failure log under register dir
     if not result.get("ok"):
