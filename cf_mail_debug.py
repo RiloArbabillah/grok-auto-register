@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""提供 Cloudflare 临时邮箱接口的命令行诊断工具。"""
+"""Command-line diagnostics for the Cloudflare temporary mail API."""
 
 import argparse
 import time

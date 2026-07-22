@@ -1,4 +1,4 @@
-"""验证 OAuth Device Authorization 的发现、重试、轮询和错误处理。"""
+"""Test OAuth device discovery, retries, polling, and errors."""
 
 import json
 import unittest

@@ -1,4 +1,4 @@
-"""编排 GUI 与 CLI 共用的单账号注册和批量执行流程。"""
+"""Orchestrate the registration flow shared by the GUI and CLI."""
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Tuple
 
@@ -80,45 +80,45 @@ def register_one_account(callbacks, ops, enable_nsfw=True, max_mail_retry=3):
     for mail_try in range(1, max_mail_retry + 1):
         if callbacks.cancelled():
             raise ops.cancelled_exception()
-        callbacks.log(f"[*] 1. 打开注册页 (尝试 {mail_try}/{max_mail_retry})")
+        callbacks.log(f"[*] 1. Open registration page (attempt {mail_try}/{max_mail_retry})")
         ops.open_signup_page()
-        callbacks.log("[*] 2. 创建邮箱并提交")
+        callbacks.log("[*] 2. Create and submit email address")
         email, dev_token = ops.fill_email_and_submit()
-        callbacks.log(f"[*] 邮箱: {email}")
-        callbacks.log(f"[Debug] 邮箱credential(jwt): {dev_token}")
+        callbacks.log(f"[*] Email: {email}")
+        callbacks.log(f"[Debug] Email credential (JWT): {dev_token}")
         if not ops.save_mail_credential(email, dev_token):
-            callbacks.log("[!] 邮箱凭据保存失败，注册继续，但已明确记录该异常")
-        callbacks.log("[*] 3. 拉取验证码")
+            callbacks.log("[!] Failed to save email credentials; registration will continue")
+        callbacks.log("[*] 3. Fetch verification code")
         try:
             code = ops.fill_code_and_submit(email, dev_token)
             mail_ok = True
             break
         except Exception as exc:
             message = str(exc)
-            if ("未收到验证码" in message or "验证码" in message) and mail_try < max_mail_retry:
-                callbacks.log(f"[!] 本邮箱未取到验证码，自动更换新邮箱重试: {message}")
+            if ("\u672a\u6536\u5230\u9a8c\u8bc1\u7801" in message or "\u9a8c\u8bc1\u7801" in message or "verification code" in message.lower()) and mail_try < max_mail_retry:
+                callbacks.log(f"[!] No verification code received; retrying with a new email: {message}")
                 ops.restart_browser()
                 ops.sleep(1)
                 continue
             raise
     if not mail_ok:
-        raise RuntimeError("验证码阶段失败，已达到最大重试次数")
-    callbacks.log(f"[*] 验证码: {code}")
-    callbacks.log("[*] 4. 填写资料")
+        raise RuntimeError("Verification failed after the maximum number of retries")
+    callbacks.log(f"[*] Verification code: {code}")
+    callbacks.log("[*] 4. Complete profile")
     profile = ops.fill_profile_and_submit()
-    callbacks.log(f"[*] 资料已填: {profile.get('given_name')} {profile.get('family_name')}")
-    callbacks.log("[*] 5. 等待 sso cookie")
+    callbacks.log(f"[*] Profile completed: {profile.get('given_name')} {profile.get('family_name')}")
+    callbacks.log("[*] 5. Wait for SSO cookie")
     sso = ops.wait_for_sso_cookie()
     if enable_nsfw:
-        callbacks.log("[*] 6. 开启 NSFW")
+        callbacks.log("[*] 6. Enable NSFW")
         try:
             nsfw_ok, nsfw_msg = ops.enable_nsfw(sso)
             if nsfw_ok:
-                callbacks.log(f"[+] NSFW 开启成功: {nsfw_msg}")
+                callbacks.log(f"[+] NSFW enabled: {nsfw_msg}")
             else:
-                callbacks.log(f"[!] NSFW 未开启，继续保存账号: {nsfw_msg}")
+                callbacks.log(f"[!] NSFW was not enabled; continuing to save the account: {nsfw_msg}")
         except Exception as exc:
-            callbacks.log(f"[!] NSFW 开启异常，继续保存账号: {exc}")
+            callbacks.log(f"[!] Failed to enable NSFW; continuing to save the account: {exc}")
     return RegistrationResult(
         ok=True,
         email=email,
@@ -151,19 +151,19 @@ def persist_account_result(result, callbacks, ops):
             )
         except Exception as pending_exc:
             pending_saved = False
-            callbacks.log(f"[!] pending 队列写入异常: {pending_exc}")
-        callbacks.log(f"[!] 账号已注册但主结果文件保存失败: {save_error}")
+            callbacks.log(f"[!] Failed to write to the pending queue: {pending_exc}")
+        callbacks.log(f"[!] Account registered, but the main result file could not be saved: {save_error}")
         if pending_saved:
-            callbacks.log("[!] 未保存账号已写入 pending 队列，等待人工重试")
+            callbacks.log("[!] Unsaved account added to the pending queue for recovery")
         else:
-            callbacks.log("[!] pending 队列也写入失败，请立即复制当前账号信息")
+            callbacks.log("[!] Failed to write the pending queue; copy the account details immediately")
 
     try:
         pools = ops.add_tokens(result.sso, result.email)
         if not isinstance(pools, dict):
             raise TypeError("token pool result must be a dict")
     except Exception as exc:
-        callbacks.log(f"[!] token 入池后处理异常，账号结果已保留: {exc}")
+        callbacks.log(f"[!] Token pool post-processing failed; account result was preserved: {exc}")
         pools = {
             "internal": {
                 "enabled": True,
@@ -173,14 +173,14 @@ def persist_account_result(result, callbacks, ops):
         }
     for name, state in pools.items():
         if isinstance(state, dict) and state.get("enabled") and not state.get("ok"):
-            callbacks.log(f"[!] grok2api {name} 入池失败: {state.get('error')}")
+            callbacks.log(f"[!] Failed to add token to grok2api {name} pool: {state.get('error')}")
 
     try:
         cpa = ops.export_cpa(result.email, result.password, result.sso)
         if not isinstance(cpa, dict):
             raise TypeError("CPA result must be a dict")
     except Exception as exc:
-        callbacks.log(f"[!] CPA 导出后处理异常，账号结果已保留: {exc}")
+        callbacks.log(f"[!] CPA export post-processing failed; account result was preserved: {exc}")
         cpa = {"ok": False, "skipped": False, "error": str(exc)}
 
     return OutputResult(
@@ -197,7 +197,7 @@ def _notify_observer(observer, result, account, output, callbacks):
     try:
         observer(result, account, output)
     except Exception as exc:
-        callbacks.log(f"[Debug] observer 执行失败: {exc}")
+        callbacks.log(f"[Debug] Observer failed: {exc}")
 
 
 def _run_cleanup_safely(ops, callbacks, reason):
@@ -205,7 +205,7 @@ def _run_cleanup_safely(ops, callbacks, reason):
         ops.cleanup(reason)
         return True
     except Exception as exc:
-        callbacks.log(f"[!] 清理失败，已忽略且不影响账号统计: {reason}: {exc}")
+        callbacks.log(f"[!] Cleanup failed and was ignored without affecting account statistics: {reason}: {exc}")
         return False
 
 
@@ -224,7 +224,7 @@ def _prepare_next_account(result, settings, callbacks, ops):
         return True
     except ops.cancelled_exception:
         result.cancelled = True
-        callbacks.log("[!] 已在账号间准备阶段停止")
+        callbacks.log("[!] Stopped while preparing the next account")
         return False
 
 
@@ -243,12 +243,12 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
     last_cleanup_success_count = 0
     try:
         ops.start_browser()
-        callbacks.log("[*] 浏览器已启动")
+        callbacks.log("[*] Browser started")
         while result.processed_count < settings.count:
             if callbacks.cancelled():
                 result.cancelled = True
                 break
-            callbacks.log(f"--- 开始第 {result.processed_count + 1}/{settings.count} 个账号 ---")
+            callbacks.log(f"--- Starting account {result.processed_count + 1}/{settings.count} ---")
             account = None
             output = None
             continue_batch = True
@@ -265,7 +265,7 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
                 result.processed_count += 1
                 if output.saved:
                     result.success_count += 1
-                    callbacks.log(f"[+] 注册并保存成功: {account.email}")
+                    callbacks.log(f"[+] Account registered and saved: {account.email}")
                     if (
                         settings.cleanup_interval > 0
                         and result.success_count % settings.cleanup_interval == 0
@@ -275,13 +275,13 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
                         _run_cleanup_safely(
                             ops,
                             callbacks,
-                            f"已成功 {result.success_count} 个账号，执行定期清理",
+                            f"{result.success_count} accounts completed; running scheduled cleanup",
                         )
                         last_cleanup_success_count = result.success_count
                 else:
                     result.fail_count += 1
                     result.registered_unsaved_count += 1
-                    callbacks.log(f"[-] 注册成功但持久化未完成: {account.email}")
+                    callbacks.log(f"[-] Account registered but not persisted: {account.email}")
                 pool_warning = any(
                     isinstance(state, dict) and state.get("enabled") and not state.get("ok")
                     for state in output.pools.values()
@@ -299,24 +299,24 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
                     result.postprocess_warning_count += 1
             except ops.cancelled_exception:
                 result.cancelled = True
-                callbacks.log("[!] 注册被停止")
+                callbacks.log("[!] Registration stopped")
                 continue_batch = False
             except ops.retry_exception as exc:
                 retry_count_for_slot += 1
                 if retry_count_for_slot <= settings.max_slot_retry:
                     callbacks.log(
-                        f"[!] 当前账号流程卡住，重试第 {retry_count_for_slot}/{settings.max_slot_retry} 次: {exc}"
+                        f"[!] Current account flow is stuck; retry {retry_count_for_slot}/{settings.max_slot_retry}: {exc}"
                     )
                 else:
                     result.fail_count += 1
                     result.processed_count += 1
                     retry_count_for_slot = 0
-                    callbacks.log(f"[-] 当前账号已达到最大重试次数，跳过: {exc}")
+                    callbacks.log(f"[-] Current account reached the retry limit and was skipped: {exc}")
             except Exception as exc:
                 result.fail_count += 1
                 result.processed_count += 1
                 retry_count_for_slot = 0
-                callbacks.log(f"[-] 注册失败: {exc}")
+                callbacks.log(f"[-] Registration failed: {exc}")
             finally:
                 _notify_observer(observer, result, account, output, callbacks)
 
@@ -325,5 +325,5 @@ def run_batch(count, callbacks, observer, ops, enable_nsfw=True, cleanup_interva
             if not _prepare_next_account(result, settings, callbacks, ops):
                 break
     finally:
-        _run_cleanup_safely(ops, callbacks, "任务结束")
+        _run_cleanup_safely(ops, callbacks, "Task complete")
     return result

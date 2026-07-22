@@ -1,4 +1,4 @@
-"""负责账号结果、pending 恢复以及 grok2api token 池的安全持久化。"""
+"""Safely persist account results, pending recovery, and grok2api pools."""
 import json
 import os
 import tempfile
@@ -57,7 +57,7 @@ def retry_pending_file(pending_path, output_path=None, log_callback=None):
     logger = log_callback or (lambda message: None)
     pending_path = os.path.realpath(os.path.abspath(os.path.expanduser(str(pending_path))))
     if not os.path.isfile(pending_path):
-        raise FileNotFoundError(f"pending 文件不存在: {pending_path}")
+        raise FileNotFoundError(f"Pending file does not exist: {pending_path}")
     suffix = ".pending.jsonl"
     if output_path:
         target_path = os.path.realpath(os.path.abspath(os.path.expanduser(str(output_path))))
@@ -66,7 +66,7 @@ def retry_pending_file(pending_path, output_path=None, log_callback=None):
     else:
         target_path = os.path.realpath(pending_path + ".recovered.txt")
     if os.path.normcase(pending_path) == os.path.normcase(target_path):
-        raise ValueError("pending 输入文件与输出文件不能是同一个文件")
+        raise ValueError("Pending input and output must not be the same file")
 
     lock_paths = sorted(
         {pending_path + ".lock", target_path + ".lock"},
@@ -100,10 +100,10 @@ def retry_pending_file(pending_path, output_path=None, log_callback=None):
                     append_account_line(target_path, email, password, sso)
                     existing.add(key)
                 restored += 1
-                logger(f"[+] 已恢复 pending 账号: {email}")
+                logger(f"[+] Recovered pending account: {email}")
             except Exception as exc:
                 unresolved.append(raw_line if raw_line.endswith("\n") else raw_line + "\n")
-                logger(f"[!] pending 第 {line_number} 行恢复失败: {exc}")
+                logger(f"[!] Failed to recover pending line {line_number}: {exc}")
 
         directory = os.path.dirname(pending_path) or "."
         fd, temp_path = tempfile.mkstemp(prefix=".pending-retry-", suffix=".jsonl.tmp", dir=directory)
@@ -188,7 +188,7 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
     try:
         from filelock import FileLock
     except Exception as exc:
-        raise RuntimeError(f"filelock 依赖不可用，拒绝非原子写入 token 池: {exc}")
+        raise RuntimeError(f"filelock is unavailable; refusing a non-atomic token pool write: {exc}")
     with FileLock(lock_path, timeout=30):
         data = {}
         if os.path.exists(token_file):
@@ -201,14 +201,14 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
                     os.replace(token_file, broken_path)
                 except Exception:
                     broken_path = token_file
-                raise RuntimeError(f"本地 token 文件 JSON 解析失败，已停止写入以避免覆盖: {broken_path}: {exc}")
+                raise RuntimeError(f"Failed to parse local token JSON; write stopped to avoid overwriting {broken_path}: {exc}")
         if not isinstance(data, dict):
-            raise RuntimeError("本地 token 文件根节点不是 JSON object，拒绝覆盖")
+            raise RuntimeError("Local token file root is not a JSON object; refusing to overwrite it")
         pool = data.get(pool_name)
         if pool is None:
             pool = []
         elif not isinstance(pool, list):
-            raise RuntimeError(f"本地 token 池 {pool_name} 不是列表，拒绝覆盖")
+            raise RuntimeError(f"Local token pool {pool_name} is not a list; refusing to overwrite it")
         existing = set()
         for item in pool:
             if isinstance(item, str):
@@ -217,7 +217,7 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
                 existing.add(_normalize_sso_token(item.get("token", "")))
         if token in existing:
             if log_callback:
-                log_callback(f"[*] grok2api 本地池已存在 token: {pool_name}")
+                log_callback(f"[*] Token already exists in local grok2api pool: {pool_name}")
             return True
         pool.append({"token": token, "tags": ["auto-register"], "note": email})
         data[pool_name] = pool
@@ -233,7 +233,7 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
                 except Exception:
                     pass
             except Exception as exc:
-                raise RuntimeError(f"创建本地 token 备份失败，拒绝继续写入: {exc}")
+                raise RuntimeError(f"Failed to back up the local token file; refusing to continue: {exc}")
         fd, temp_path = tempfile.mkstemp(prefix=".token-", suffix=".tmp", dir=parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -258,18 +258,11 @@ def add_token_to_grok2api_local_pool(raw_token, email="", log_callback=None):
                 except Exception:
                     pass
     if log_callback:
-        log_callback(f"[+] 已写入 grok2api 本地池: {pool_name} ({token_file})")
+        log_callback(f"[+] Added token to local grok2api pool: {pool_name} ({token_file})")
     return True
 
 def get_grok2api_remote_api_bases(base):
-    """生成 grok2api 管理 API 候选根路径。
-
-    参数:
-      - base str: 用户配置的 grok2api 远端地址
-
-    返回:
-      - list[str]: 依次尝试的管理 API 根路径
-    """
+    """Return candidate grok2api admin API roots in request order."""
     normalized = str(base or "").strip().rstrip("/")
     if not normalized:
         return []
@@ -297,7 +290,7 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
     app_key = str(config.get("grok2api_remote_app_key", "") or "").strip()
     pool_name = str(config.get("grok2api_pool_name", "ssoBasic") or "ssoBasic").strip()
     if not base or not app_key:
-        raise RemoteTokenRequestError("grok2api 远端未配置 base/app_key")
+        raise RemoteTokenRequestError("Remote grok2api base/app_key is not configured")
     headers = {"Content-Type": "application/json"}
     query = {"app_key": app_key}
     remote_pool = {"ssoBasic": "basic", "ssoSuper": "super"}[pool_name]
@@ -309,20 +302,20 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
         try:
             response = http_post(endpoint, headers=headers, params=query, json=add_payload, timeout=30)
         except Exception as exc:
-            raise RemoteTokenRequestError(f"远端 /tokens/add 网络请求失败: {endpoint}: {exc}") from exc
+            raise RemoteTokenRequestError(f"Remote /tokens/add request failed: {endpoint}: {exc}") from exc
         status = int(getattr(response, "status_code", 0) or 0)
         if 200 <= status < 300:
             if log_callback:
-                log_callback(f"[+] 已写入 grok2api 远端池: {pool_name} ({endpoint})")
+                log_callback(f"[+] Added token to remote grok2api pool: {pool_name} ({endpoint})")
             return True
         if status in (404, 405):
             incompatible.append(f"{endpoint}: HTTP {status}")
             continue
         body = str(getattr(response, "text", "") or "")[:300]
-        raise RemoteTokenRequestError(f"远端 /tokens/add 请求失败，不允许全量回退: {endpoint}: HTTP {status}: {body}")
+        raise RemoteTokenRequestError(f"Remote /tokens/add failed and full-save fallback is not allowed: {endpoint}: HTTP {status}: {body}")
     if not bool(config.get("grok2api_allow_legacy_full_save", False)):
         raise RemoteTokenCompatibilityError(
-            "/tokens/add 不受支持，旧版全量保存默认禁用以避免并发覆盖: " + "; ".join(incompatible)
+            "/tokens/add is unsupported; legacy full-save is disabled to prevent concurrent overwrites: " + "; ".join(incompatible)
         )
     current = None
     fallback_base = None
@@ -333,7 +326,7 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
         try:
             response = http_get(endpoint, headers=headers, params=query, timeout=20)
         except Exception as exc:
-            raise RemoteTokenRequestError(f"旧版远端池读取网络失败: {endpoint}: {exc}") from exc
+            raise RemoteTokenRequestError(f"Failed to read legacy remote pool: {endpoint}: {exc}") from exc
         status = int(getattr(response, "status_code", 0) or 0)
         if status != 200:
             load_errors.append(f"{endpoint}: HTTP {status}")
@@ -349,12 +342,12 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
         etag = response_headers.get("ETag") or response_headers.get("etag")
         break
     if current is None or fallback_base is None:
-        raise RemoteTokenRequestError("无法安全读取旧版远端 token 池: " + "; ".join(load_errors))
+        raise RemoteTokenRequestError("Could not safely read the legacy remote token pool: " + "; ".join(load_errors))
     pool = current.get(pool_name)
     if pool is None:
         pool = []
     elif not isinstance(pool, list):
-        raise RemoteTokenRequestError(f"远端 token 池 {pool_name} 不是列表，拒绝全量覆盖")
+        raise RemoteTokenRequestError(f"Remote token pool {pool_name} is not a list; refusing full overwrite")
     existing = {
         _normalize_sso_token(item if isinstance(item, str) else item.get("token", ""))
         for item in pool if isinstance(item, (str, dict))
@@ -364,7 +357,7 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
     current[pool_name] = pool
     if not etag:
         raise RemoteTokenCompatibilityError(
-            "旧版远端接口未提供 ETag，无法保证并发安全，已拒绝全量保存"
+            "Legacy remote endpoint did not provide an ETag; refusing unsafe full-save"
         )
     save_headers = dict(headers)
     save_headers["If-Match"] = etag
@@ -372,12 +365,12 @@ def add_token_to_grok2api_remote_pool(raw_token, email="", log_callback=None):
     try:
         response = http_post(endpoint, headers=save_headers, params=query, json=current, timeout=30)
     except Exception as exc:
-        raise RemoteTokenRequestError(f"旧版远端池保存网络失败: {endpoint}: {exc}") from exc
+        raise RemoteTokenRequestError(f"Failed to save legacy remote pool: {endpoint}: {exc}") from exc
     status = int(getattr(response, "status_code", 0) or 0)
     if not 200 <= status < 300:
-        raise RemoteTokenRequestError(f"旧版远端池保存失败: {endpoint}: HTTP {status}")
+        raise RemoteTokenRequestError(f"Legacy remote pool save failed: {endpoint}: HTTP {status}")
     if log_callback:
-        log_callback(f"[+] 已写入 grok2api 远端池（旧版兼容）: {pool_name} ({endpoint})")
+        log_callback(f"[+] Added token to remote grok2api pool (legacy compatibility): {pool_name} ({endpoint})")
     return True
 
 def add_token_to_grok2api_pools(raw_token, email="", log_callback=None):
@@ -390,11 +383,11 @@ def add_token_to_grok2api_pools(raw_token, email="", log_callback=None):
             result["local"]["ok"] = bool(add_token_to_grok2api_local_pool(raw_token, email=email, log_callback=log_callback))
         except Exception as exc:
             result["local"]["ok"] = False
-            result["local"]["error"] = log_exception("写入 grok2api 本地池失败", exc, log_callback)
+            result["local"]["error"] = log_exception("Failed to write local grok2api pool", exc, log_callback)
     if result["remote"]["enabled"]:
         try:
             result["remote"]["ok"] = bool(add_token_to_grok2api_remote_pool(raw_token, email=email, log_callback=log_callback))
         except Exception as exc:
             result["remote"]["ok"] = False
-            result["remote"]["error"] = log_exception("写入 grok2api 远端池失败", exc, log_callback)
+            result["remote"]["error"] = log_exception("Failed to write remote grok2api pool", exc, log_callback)
     return result

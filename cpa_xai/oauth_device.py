@@ -1,4 +1,4 @@
-"""实现 OAuth Device Authorization 的发现、启动和 token 轮询。"""
+"""Implement OAuth device discovery, authorization, and token polling."""
 
 import json
 import time

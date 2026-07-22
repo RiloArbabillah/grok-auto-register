@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""GUI 与 CLI 主入口，并为拆分后的注册模块保留兼容适配。"""
+"""GUI and CLI entry point with compatibility adapters for split modules."""
 
 try:
     import tkinter as tk
@@ -126,7 +126,7 @@ def ensure_stable_python_runtime():
             return
 
         print(
-            f"[*] 检测到 Python {sys.version.split()[0]}，自动切换到更稳定的解释器: {candidate}"
+            f"[*] Detected Python {sys.version.split()[0]}; switching to a more stable interpreter: {candidate}"
         )
         env = os.environ.copy()
         env["DPE_REEXEC_DONE"] = "1"
@@ -136,7 +136,7 @@ def ensure_stable_python_runtime():
 def warn_runtime_compatibility():
     if sys.version_info >= (3, 14):
         print(
-            "[提示] 当前 Python 为 3.14+；若出现 Mail.tm TLS 异常，建议改用 Python 3.12 或 3.13。"
+            "[Note] Python 3.14+ is active. Use Python 3.12 or 3.13 if Mail.tm TLS errors occur."
         )
 
 
@@ -340,7 +340,7 @@ sys.modules[__name__].__class__ = _CompatibilityModule
 
 def raise_if_cancelled(cancel_callback=None):
     if cancel_callback and cancel_callback():
-        raise RegistrationCancelled("用户停止注册")
+        raise RegistrationCancelled("Registration stopped by user")
 
 
 def sleep_with_cancel(seconds, cancel_callback=None):
@@ -571,7 +571,7 @@ def maybe_export_cpa_xai_after_success(email, password, sso="", log_callback=Non
     try:
         from cpa_export import export_cpa_xai_for_account
     except Exception as exc:
-        logger(f"[!] CPA 模块导入失败，已跳过 OIDC 导出: {exc}")
+        logger(f"[!] Failed to import CPA module; OIDC export skipped: {exc}")
         return {"ok": False, "error": str(exc)}
     current_page = None
     try:
@@ -589,18 +589,18 @@ def maybe_export_cpa_xai_after_success(email, password, sso="", log_callback=Non
             cancel_callback=cancel_callback,
         )
     except Exception as exc:
-        logger(f"[!] CPA OIDC 导出失败，账号已保留: {exc}")
+        logger(f"[!] CPA OIDC export failed; account was preserved: {exc}")
         return {"ok": False, "error": str(exc)}
     if result.get("ok"):
         exported_path = result.get("hotload_path") or result.get("path") or ""
         suffix = f": {exported_path}" if exported_path else ""
         if result.get("warning") or result.get("partial") or result.get("cpa_copy_error"):
-            detail = result.get("cpa_copy_error") or "后处理未完整完成"
-            logger(f"[!] CPA OIDC 凭证已生成，但存在后处理警告{suffix}: {detail}")
+            detail = result.get("cpa_copy_error") or "post-processing did not complete"
+            logger(f"[!] CPA OIDC credentials generated with a post-processing warning{suffix}: {detail}")
         else:
-            logger(f"[+] CPA OIDC 导出成功{suffix}")
+            logger(f"[+] CPA OIDC export succeeded{suffix}")
     elif not result.get("skipped"):
-        logger(f"[!] CPA OIDC 导出失败，账号已保留: {result.get('error') or result}")
+        logger(f"[!] CPA OIDC export failed; account was preserved: {result.get('error') or result}")
     return result
 
 
@@ -610,7 +610,7 @@ def _save_mail_credential(email, credential, log_callback=None):
     try:
         return save_mail_credential(os.path.dirname(__file__), email, credential)
     except Exception as exc:
-        log_exception("保存邮箱凭据失败", exc, log_callback)
+        log_exception("Failed to save email credentials", exc, log_callback)
         return False
 
 
@@ -624,7 +624,7 @@ def _queue_unsaved_account(path, payload, error, log_callback=None):
     try:
         return queue_unsaved_account(path, payload, error)
     except Exception as exc:
-        log_exception("写入账号 pending 队列失败", exc, log_callback)
+        log_exception("Failed to write account to pending queue", exc, log_callback)
         return False
 
 
@@ -674,7 +674,7 @@ def run_registration_common(count, log_callback, cancel_callback, accounts_outpu
 class GrokRegisterGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Grok 注册机")
+        self.root.title("Grok Registration")
         self.root.geometry("1120x900")
         self.root.minsize(960, 700)
         self.is_running = False
@@ -699,7 +699,7 @@ class GrokRegisterGUI:
 
         config_frame = tk.LabelFrame(
             main_frame,
-            text="配置",
+            text="Configuration",
             bg=UI_PANEL_BG,
             fg=UI_FG,
             padx=10,
@@ -730,12 +730,12 @@ class GrokRegisterGUI:
                 pady=3,
             )
 
-        add_label(0, 0, "邮箱服务商:")
+        add_label(0, 0, "Email provider:")
         self.email_provider_var = tk.StringVar(value=config.get("email_provider", "duckmail"))
         self.email_provider_combo = tk_option_menu(config_frame, self.email_provider_var, ["duckmail", "yyds", "cloudflare", "cloudmail"], width=12)
         add_field(self.email_provider_combo, 0, 1, sticky=tk.W)
 
-        add_label(0, 2, "注册数量:")
+        add_label(0, 2, "Account count:")
         self.count_var = tk.StringVar(value=str(config.get("register_count", 1)))
         self.count_spinbox = tk.Spinbox(
             config_frame,
@@ -753,12 +753,12 @@ class GrokRegisterGUI:
         )
         add_field(self.count_spinbox, 0, 3, sticky=tk.W)
 
-        add_label(1, 0, "注册选项:")
+        add_label(1, 0, "Options:")
         self.nsfw_var = tk.BooleanVar(value=config.get("enable_nsfw", True))
-        self.nsfw_check = tk_checkbutton(config_frame, text="注册后开启 NSFW", variable=self.nsfw_var)
+        self.nsfw_check = tk_checkbutton(config_frame, text="Enable NSFW after registration", variable=self.nsfw_var)
         add_field(self.nsfw_check, 1, 1, sticky=tk.W)
 
-        add_label(1, 2, "代理（可选）:")
+        add_label(1, 2, "Proxy (optional):")
         self.proxy_var = tk.StringVar(value=config.get("proxy", ""))
         self.proxy_entry = tk_entry(config_frame, textvariable=self.proxy_var, width=34)
         add_field(self.proxy_entry, 1, 3)
@@ -768,7 +768,7 @@ class GrokRegisterGUI:
         self.api_key_entry = tk_entry(config_frame, textvariable=self.api_key_var, width=34)
         add_field(self.api_key_entry, 2, 1)
 
-        add_label(2, 2, "Cloudflare 鉴权模式:")
+        add_label(2, 2, "Cloudflare auth mode:")
         self.cloudflare_auth_mode_var = tk.StringVar(value=config.get("cloudflare_auth_mode", "none"))
         self.cloudflare_auth_mode_combo = tk_option_menu(
             config_frame, self.cloudflare_auth_mode_var, ["query-key", "bearer", "x-api-key", "x-admin-auth", "none"], width=12
@@ -785,7 +785,7 @@ class GrokRegisterGUI:
         self.cloudflare_api_key_entry = tk_entry(config_frame, textvariable=self.cloudflare_api_key_var, width=34)
         add_field(self.cloudflare_api_key_entry, 4, 1)
 
-        add_label(4, 2, "CF 路径:")
+        add_label(4, 2, "CF paths:")
         self.cloudflare_paths_var = tk.StringVar(
             value=",".join(
                 [
@@ -804,7 +804,7 @@ class GrokRegisterGUI:
         self.cloudmail_api_base_entry = tk_entry(config_frame, textvariable=self.cloudmail_api_base_var, width=34)
         add_field(self.cloudmail_api_base_entry, 5, 1)
 
-        add_label(5, 2, "Cloud Mail 域名:")
+        add_label(5, 2, "Cloud Mail domains:")
         self.cloudmail_domains_var = tk.StringVar(value=config.get("cloudmail_domains", ""))
         self.cloudmail_domains_entry = tk_entry(config_frame, textvariable=self.cloudmail_domains_var, width=34)
         add_field(self.cloudmail_domains_entry, 5, 3)
@@ -814,68 +814,68 @@ class GrokRegisterGUI:
         self.cloudmail_public_token_entry = tk_entry(config_frame, textvariable=self.cloudmail_public_token_var, width=72)
         add_field(self.cloudmail_public_token_entry, 6, 1, columnspan=3)
 
-        add_label(7, 0, "grok2api 本地入池:")
+        add_label(7, 0, "Local grok2api pool:")
         self.grok2api_local_auto_var = tk.BooleanVar(value=bool(config.get("grok2api_auto_add_local", True)))
         self.grok2api_local_auto_check = tk_checkbutton(config_frame, variable=self.grok2api_local_auto_var)
         add_field(self.grok2api_local_auto_check, 7, 1, sticky=tk.W)
 
-        add_label(7, 2, "grok2api 池名:")
+        add_label(7, 2, "grok2api pool name:")
         self.grok2api_pool_name_var = tk.StringVar(value=str(config.get("grok2api_pool_name", "ssoBasic")))
         self.grok2api_pool_name_combo = tk_option_menu(
             config_frame, self.grok2api_pool_name_var, ["ssoBasic", "ssoSuper"], width=12
         )
         add_field(self.grok2api_pool_name_combo, 7, 3, sticky=tk.W)
 
-        add_label(8, 0, "本地 token.json:")
+        add_label(8, 0, "Local token.json:")
         self.grok2api_local_file_var = tk.StringVar(value=str(config.get("grok2api_local_token_file", "")))
         self.grok2api_local_file_entry = tk_entry(config_frame, textvariable=self.grok2api_local_file_var, width=72)
         add_field(self.grok2api_local_file_entry, 8, 1, columnspan=3)
 
-        add_label(9, 0, "grok2api 远端入池:")
+        add_label(9, 0, "Remote grok2api pool:")
         self.grok2api_remote_auto_var = tk.BooleanVar(value=bool(config.get("grok2api_auto_add_remote", False)))
         self.grok2api_remote_auto_check = tk_checkbutton(config_frame, variable=self.grok2api_remote_auto_var)
         add_field(self.grok2api_remote_auto_check, 9, 1, sticky=tk.W)
 
-        add_label(10, 0, "grok2api 远端 Base:")
+        add_label(10, 0, "Remote grok2api base:")
         self.grok2api_remote_base_var = tk.StringVar(value=str(config.get("grok2api_remote_base", "")))
         self.grok2api_remote_base_entry = tk_entry(config_frame, textvariable=self.grok2api_remote_base_var, width=72)
         add_field(self.grok2api_remote_base_entry, 10, 1, columnspan=3)
 
-        add_label(11, 0, "grok2api 远端 app_key:")
+        add_label(11, 0, "Remote grok2api app_key:")
         self.grok2api_remote_key_var = tk.StringVar(value=str(config.get("grok2api_remote_app_key", "")))
         self.grok2api_remote_key_entry = tk_entry(config_frame, textvariable=self.grok2api_remote_key_var, width=72)
         add_field(self.grok2api_remote_key_entry, 11, 1, columnspan=3)
 
         add_label(12, 0, "OIDC / CPA:")
         self.cpa_export_var = tk.BooleanVar(value=bool(config.get("cpa_export_enabled", False)))
-        self.cpa_export_check = tk_checkbutton(config_frame, text="注册成功后导出 CPA xAI OIDC", variable=self.cpa_export_var)
+        self.cpa_export_check = tk_checkbutton(config_frame, text="Export CPA xAI OIDC after registration", variable=self.cpa_export_var)
         add_field(self.cpa_export_check, 12, 1, sticky=tk.W)
 
-        add_label(12, 2, "CPA 输出目录:")
+        add_label(12, 2, "CPA output directory:")
         self.cpa_auth_dir_var = tk.StringVar(value=str(config.get("cpa_auth_dir", "./cpa_auths")))
         self.cpa_auth_dir_entry = tk_entry(config_frame, textvariable=self.cpa_auth_dir_var, width=34)
         add_field(self.cpa_auth_dir_entry, 12, 3)
 
         btn_frame = tk.Frame(main_frame, bg=UI_BG)
         btn_frame.grid(row=1, column=0, sticky=tk.EW, pady=(0, 6))
-        self.start_btn = tk_button(btn_frame, text="开始注册", command=self.start_registration)
+        self.start_btn = tk_button(btn_frame, text="Start", command=self.start_registration)
         self.start_btn.pack(side=tk.LEFT, padx=5)
-        self.stop_btn = tk_button(btn_frame, text="停止", command=self.stop_registration, state=tk.DISABLED)
+        self.stop_btn = tk_button(btn_frame, text="Stop", command=self.stop_registration, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT, padx=5)
-        self.clear_btn = tk_button(btn_frame, text="清空日志", command=self.clear_log)
+        self.clear_btn = tk_button(btn_frame, text="Clear log", command=self.clear_log)
         self.clear_btn.pack(side=tk.LEFT, padx=5)
 
         status_frame = tk.Frame(main_frame, bg=UI_BG)
         status_frame.grid(row=2, column=0, sticky=tk.EW, pady=(0, 6))
-        self.status_var = tk.StringVar(value="就绪")
-        tk_label(status_frame, text="状态: ").pack(side=tk.LEFT)
+        self.status_var = tk.StringVar(value="Ready")
+        tk_label(status_frame, text="Status: ").pack(side=tk.LEFT)
         self.status_label = tk.Label(status_frame, textvariable=self.status_var, bg=UI_BG, fg="green")
         self.status_label.pack(side=tk.LEFT)
-        self.stats_var = tk.StringVar(value="成功: 0 | 失败: 0 | 待恢复: 0 | 后处理警告: 0")
+        self.stats_var = tk.StringVar(value="Success: 0 | Failed: 0 | Pending: 0 | Warnings: 0")
         tk.Label(status_frame, textvariable=self.stats_var, bg=UI_BG, fg=UI_FG).pack(side=tk.RIGHT)
         log_frame = tk.LabelFrame(
             main_frame,
-            text="日志",
+            text="Log",
             bg=UI_PANEL_BG,
             fg=UI_FG,
             padx=5,
@@ -901,8 +901,8 @@ class GrokRegisterGUI:
             highlightbackground="#555555",
         )
         self.log_text.grid(row=0, column=0, sticky=tk.NSEW)
-        self.log("[*] GUI 已就绪，配置已加载")
-        self.log(f"[*] 当前邮箱服务商: {self.email_provider_var.get()} | 注册数量: {self.count_var.get()}")
+        self.log("[*] GUI ready; configuration loaded")
+        self.log(f"[*] Email provider: {self.email_provider_var.get()} | Account count: {self.count_var.get()}")
 
     def process_ui_queue(self):
         try:
@@ -916,19 +916,19 @@ class GrokRegisterGUI:
                 elif kind == "clear_log":
                     self.log_text.delete(1.0, tk.END)
                 elif kind == "stats":
-                    self.stats_var.set(f"成功: {event[1]} | 失败: {event[2]} | 待恢复: {event[3]} | 后处理警告: {event[4]}")
+                    self.stats_var.set(f"Success: {event[1]} | Failed: {event[2]} | Pending: {event[3]} | Warnings: {event[4]}")
                 elif kind == "running":
                     running = bool(event[1])
                     self.start_btn.config(state=tk.DISABLED if running else tk.NORMAL)
                     self.stop_btn.config(state=tk.NORMAL if running else tk.DISABLED)
-                    self.status_var.set("运行中..." if running else "就绪")
+                    self.status_var.set("Running..." if running else "Ready")
                     self.status_label.config(foreground="blue" if running else "green")
                 elif kind == "error":
                     messagebox.showerror(event[1], event[2])
         except queue.Empty:
             pass
         except Exception as exc:
-            print(f"[!] UI 队列处理失败: {exc}", file=sys.stderr)
+            print(f"[!] UI queue processing failed: {exc}", file=sys.stderr)
         finally:
             try:
                 self.root.after(50, self.process_ui_queue)
@@ -963,7 +963,7 @@ class GrokRegisterGUI:
 
     def start_registration(self):
         if self.is_running:
-            self.log("[!] 当前已有任务在运行")
+            self.log("[!] A task is already running")
             return
 
         config["email_provider"] = self.email_provider_var.get().strip() or "duckmail"
@@ -998,7 +998,7 @@ class GrokRegisterGUI:
             config.update(validated)
             save_config()
         except (ValueError, ConfigError) as exc:
-            self.log(f"[!] 配置无效或保存失败: {exc}")
+            self.log(f"[!] Invalid configuration or save failure: {exc}")
             return
         self.stop_requested = False
         self._reset_batch_counters()
@@ -1009,8 +1009,8 @@ class GrokRegisterGUI:
         )
         self.update_stats()
         self._set_running_ui(True)
-        self.log(f"[*] 配置已保存，开始执行。目标数量: {count}")
-        self.log(f"[*] 成功账号将实时保存到: {self.accounts_output_file}")
+        self.log(f"[*] Configuration saved; starting with target count: {count}")
+        self.log(f"[*] Successful accounts will be saved to: {self.accounts_output_file}")
         threading.Thread(
             target=self.run_registration,
             args=(count,),
@@ -1019,7 +1019,7 @@ class GrokRegisterGUI:
 
     def stop_registration(self):
         self.stop_requested = True
-        self.log("[!] 用户停止注册")
+        self.log("[!] Registration stopped by user")
 
     def run_registration(self, count):
         def observer(batch, account, output):
@@ -1044,10 +1044,10 @@ class GrokRegisterGUI:
             self.postprocess_warning_count = batch.postprocess_warning_count
             self.update_stats()
         except Exception as exc:
-            log_exception("任务异常", exc, self.log)
+            log_exception("Task failed", exc, self.log)
         finally:
             self._set_running_ui(False)
-            self.log("[*] 任务结束")
+            self.log("[*] Task complete")
 
 
 
@@ -1074,15 +1074,15 @@ def run_registration_cli(count):
         os.path.dirname(__file__),
         f"accounts_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
     )
-    cli_log(f"[*] 终端模式启动，目标数量: {count}")
-    cli_log(f"[*] 成功账号将实时保存到: {accounts_output_file}")
+    cli_log(f"[*] CLI mode started; target count: {count}")
+    cli_log(f"[*] Successful accounts will be saved to: {accounts_output_file}")
     last_stats = {"success": 0, "fail": 0, "pending": 0, "warnings": 0}
     def observer(batch, account, output):
         last_stats["success"] = batch.success_count
         last_stats["fail"] = batch.fail_count
         last_stats["pending"] = batch.registered_unsaved_count
         last_stats["warnings"] = batch.postprocess_warning_count
-        cli_log(f"[*] 当前统计: 成功 {batch.success_count} | 失败 {batch.fail_count} | 待恢复 {batch.registered_unsaved_count} | 后处理警告 {batch.postprocess_warning_count}")
+        cli_log(f"[*] Current stats: success {batch.success_count} | failed {batch.fail_count} | pending {batch.registered_unsaved_count} | warnings {batch.postprocess_warning_count}")
     try:
         batch = run_registration_common(
             count=count,
@@ -1097,11 +1097,11 @@ def run_registration_cli(count):
         last_stats["warnings"] = batch.postprocess_warning_count
     except KeyboardInterrupt:
         controller.stop()
-        cli_log("[!] 收到 Ctrl+C，正在停止并清理")
+        cli_log("[!] Ctrl+C received; stopping and cleaning up")
     except Exception as exc:
-        log_exception("任务异常", exc, cli_log)
+        log_exception("Task failed", exc, cli_log)
     finally:
-        cli_log(f"[*] 任务结束。成功 {last_stats['success']} | 失败 {last_stats['fail']} | 待恢复 {last_stats['pending']} | 后处理警告 {last_stats['warnings']}")
+        cli_log(f"[*] Task complete. Success {last_stats['success']} | failed {last_stats['fail']} | pending {last_stats['pending']} | warnings {last_stats['warnings']}")
 
 
 def main_cli():
@@ -1118,16 +1118,16 @@ def main_cli():
         cli_log(f"[!] {exc}")
         return
     count = int(config.get("register_count", 1) or 1)
-    cli_log("[*] CLI 已加载配置")
-    cli_log(f"[*] 当前邮箱服务商: {config.get('email_provider', 'duckmail')} | 注册数量: {count}")
-    cli_log("[*] 输入 start 后开始；按 Ctrl+C 可强制停止")
+    cli_log("[*] CLI configuration loaded")
+    cli_log(f"[*] Email provider: {config.get('email_provider', 'duckmail')} | Account count: {count}")
+    cli_log("[*] Enter start to begin; press Ctrl+C to stop")
     try:
         command = input("> ").strip().lower()
     except KeyboardInterrupt:
-        cli_log("[!] 已取消")
+        cli_log("[!] Cancelled")
         return
     if command != "start":
-        cli_log("[!] 未输入 start，已退出")
+        cli_log("[!] start was not entered; exiting")
         return
     run_registration_cli(count)
 
@@ -1135,7 +1135,7 @@ def main_cli():
 def main():
     if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "retry-pending":
         if len(sys.argv) < 3:
-            print("用法: python grok_register_ttk.py retry-pending <pending文件> [输出文件]", file=sys.stderr)
+            print("Usage: python grok_register_ttk.py retry-pending <pending-file> [output-file]", file=sys.stderr)
             return
         try:
             summary = retry_pending_file(
@@ -1144,17 +1144,17 @@ def main():
                 log_callback=cli_log,
             )
             cli_log(
-                f"[*] pending 恢复完成: 已恢复 {summary['restored']} | 剩余 {summary['remaining']} | 输出 {summary['output_path']}"
+                f"[*] Pending recovery complete: restored {summary['restored']} | remaining {summary['remaining']} | output {summary['output_path']}"
             )
         except Exception as exc:
-            log_exception("pending 恢复失败", exc, cli_log)
+            log_exception("Pending recovery failed", exc, cli_log)
         return
     if len(sys.argv) > 1 and sys.argv[1].strip().lower() in ("start", "cli", "--cli"):
         main_cli()
         return
     if not TK_AVAILABLE:
-        print(f"[!] GUI 模式需要 Tkinter，但当前环境不可用: {TK_IMPORT_ERROR}", file=sys.stderr)
-        print("[*] 可改用 CLI 模式: python grok_register_ttk.py cli", file=sys.stderr)
+        print(f"[!] GUI mode requires Tkinter, which is unavailable: {TK_IMPORT_ERROR}", file=sys.stderr)
+        print("[*] Use CLI mode instead: python grok_register_ttk.py cli", file=sys.stderr)
         return
     root = tk.Tk()
     setup_light_theme(root)
@@ -1163,7 +1163,7 @@ def main():
     except ConfigError as exc:
         print(f"[!] {exc}", file=sys.stderr)
         try:
-            messagebox.showerror("配置错误", str(exc))
+            messagebox.showerror("Configuration Error", str(exc))
         except Exception:
             pass
         root.destroy()

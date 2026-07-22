@@ -1,4 +1,4 @@
-"""验证主模块对拆分模块公开函数和运行状态的兼容代理。"""
+"""Test compatibility proxies exposed by the main module."""
 
 import unittest
 from unittest.mock import patch

@@ -1,4 +1,4 @@
-"""验证 pending 账号恢复的去重、锁、原子更新和异常处理。"""
+"""Test pending account recovery, locking, and atomic updates."""
 
 import json
 import os

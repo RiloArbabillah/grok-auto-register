@@ -1,4 +1,4 @@
-"""负责应用配置的默认值、加载保存、规范化和运行前校验。"""
+"""Manage application defaults, persistence, normalization, and validation."""
 import json
 import os
 import tempfile
@@ -73,26 +73,26 @@ class ConfigError(RuntimeError):
 def _require_bool(cfg, key):
     value = cfg.get(key)
     if type(value) is not bool:
-        raise ConfigError(f"配置项 {key} 必须是布尔值 true/false")
+        raise ConfigError(f"Config option {key} must be a boolean true/false")
     return value
 
 
 def _require_int(cfg, key, minimum, maximum):
     value = cfg.get(key)
     if type(value) is not int:
-        raise ConfigError(f"配置项 {key} 必须是整数")
+        raise ConfigError(f"Config option {key} must be an integer")
     if not minimum <= value <= maximum:
-        raise ConfigError(f"配置项 {key} 必须在 {minimum} 到 {maximum} 之间")
+        raise ConfigError(f"Config option {key} must be between {minimum} and {maximum}")
     return value
 
 
 def _require_string(cfg, key, path=False):
     value = cfg.get(key)
     if not isinstance(value, str):
-        raise ConfigError(f"配置项 {key} 必须是字符串")
+        raise ConfigError(f"Config option {key} must be a string")
     value = value.strip() if key not in ("user_agent",) else value
     if "\x00" in value:
-        raise ConfigError(f"配置项 {key} 包含非法空字符")
+        raise ConfigError(f"Config option {key} contains an invalid null character")
     if path and value:
         os.path.expanduser(value)
     return value
@@ -125,7 +125,7 @@ def validate_config_structure(raw):
     cfg["sub2api_readiness_poll_sec"] = _require_int(cfg, "sub2api_readiness_poll_sec", 1, 300)
     group_ids = cfg.get("sub2api_group_ids")
     if not isinstance(group_ids, list) or not group_ids or any(type(value) is not int for value in group_ids):
-        raise ConfigError("配置项 sub2api_group_ids 必须是非空整数数组")
+        raise ConfigError("Config option sub2api_group_ids must be a non-empty integer array")
     string_keys = tuple(key for key, value in DEFAULT_CONFIG.items() if isinstance(value, str))
     path_keys = {"grok2api_local_token_file", "api_reverse_tools", "cpa_auth_dir", "cpa_hotload_dir"}
     for key in string_keys:
@@ -138,7 +138,7 @@ def validate_config_structure(raw):
     for key, allowed in enums.items():
         value = cfg.get(key, DEFAULT_CONFIG.get(key, ""))
         if value not in allowed:
-            raise ConfigError(f"配置项 {key} 的值无效: {value!r}; 允许值: {sorted(allowed)}")
+            raise ConfigError(f"Config option {key} has invalid value {value!r}; allowed values: {sorted(allowed)}")
         cfg[key] = value
 
     api_path_keys = {
@@ -162,7 +162,7 @@ def validate_config_structure(raw):
             continue
         parsed = urllib.parse.urlsplit(value)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ConfigError(f"配置项 {key} 必须是有效的 http/https URL")
+            raise ConfigError(f"Config option {key} must be a valid HTTP/HTTPS URL")
 
     for key in path_keys:
         value = cfg[key]
@@ -175,32 +175,32 @@ def validate_run_requirements(cfg):
     cfg = validate_config_structure(cfg)
     provider = cfg["email_provider"]
     if provider == "cloudflare" and not cfg["cloudflare_api_base"]:
-        raise ConfigError("Cloudflare 模式需要配置 cloudflare_api_base")
+        raise ConfigError("Cloudflare mode requires cloudflare_api_base")
     if provider == "cloudmail":
         missing = [
             key for key in ("cloudmail_api_base", "cloudmail_public_token", "cloudmail_domains")
             if not cfg[key]
         ]
         if missing:
-            raise ConfigError("Cloud Mail 模式缺少必需配置: " + ", ".join(missing))
+            raise ConfigError("Cloud Mail mode is missing required options: " + ", ".join(missing))
     if provider == "yyds" and not (cfg["yyds_api_key"] or cfg["yyds_jwt"]):
-        raise ConfigError("YYDS 模式需要至少配置 yyds_api_key 或 yyds_jwt")
+        raise ConfigError("YYDS mode requires yyds_api_key or yyds_jwt")
     if cfg["grok2api_auto_add_remote"]:
         missing = [
             key for key in ("grok2api_remote_base", "grok2api_remote_app_key")
             if not cfg[key]
         ]
         if missing:
-            raise ConfigError("远端 token 入池缺少必需配置: " + ", ".join(missing))
+            raise ConfigError("Remote token pool is missing required options: " + ", ".join(missing))
     if cfg["cpa_export_enabled"] and cfg["cpa_copy_to_hotload"] and not cfg["cpa_hotload_dir"]:
-        raise ConfigError("启用 CPA 热加载复制时必须配置 cpa_hotload_dir")
+        raise ConfigError("cpa_hotload_dir is required when CPA hotload copying is enabled")
     if cfg["sub2api_auto_import"]:
         missing = [
             key for key in ("sub2api_base_url", "sub2api_admin_api_key")
             if not cfg[key]
         ]
         if missing:
-            raise ConfigError("Sub2API 自动导入缺少必需配置: " + ", ".join(missing))
+            raise ConfigError("Sub2API auto-import is missing required options: " + ", ".join(missing))
     return cfg
 
 
@@ -225,7 +225,7 @@ def load_config():
         except ConfigError:
             raise
         except Exception as exc:
-            raise ConfigError(f"配置文件解析失败: {CONFIG_FILE}: {exc}") from exc
+            raise ConfigError(f"Failed to parse config file {CONFIG_FILE}: {exc}") from exc
     return _replace_config(validate_config_structure(DEFAULT_CONFIG.copy()))
 
 
@@ -255,7 +255,7 @@ def save_config():
         except Exception:
             pass
     except Exception as exc:
-        raise ConfigError(f"保存配置失败: {exc}") from exc
+        raise ConfigError(f"Failed to save config: {exc}") from exc
     finally:
         if fd is not None:
             try:

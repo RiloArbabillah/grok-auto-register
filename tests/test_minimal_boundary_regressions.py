@@ -1,4 +1,4 @@
-"""验证后处理警告、邮件重试、目标锁和常量兼容边界。"""
+"""Test post-processing, mail retry, locking, and compatibility boundaries."""
 
 import json
 import tempfile
@@ -138,7 +138,7 @@ class MinimalBoundaryRegressionTests(unittest.TestCase):
         )
         self.assertEqual(batch.success_count, 1)
         self.assertEqual(batch.fail_count, 0)
-        self.assertTrue(any("NSFW 开启异常" in line for line in logs))
+        self.assertTrue(any("Failed to enable NSFW" in line for line in logs))
 
     def test_main_constant_assignments_forward_to_owner_modules(self):
         old_config_file = app_config.CONFIG_FILE

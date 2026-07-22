@@ -1,4 +1,4 @@
-"""管理 CPA 授权浏览器会话、代理、Cookie 注入和资源清理。"""
+"""Manage CPA browser sessions, proxies, cookies, and cleanup."""
 from __future__ import annotations
 
 import os

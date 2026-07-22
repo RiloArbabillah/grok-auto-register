@@ -1,4 +1,4 @@
-"""验证共享注册流程的重试、统计、取消、清理和后处理边界。"""
+"""Test registration retries, statistics, cancellation, and cleanup."""
 
 import unittest
 
@@ -70,14 +70,14 @@ class RegistrationFlowTests(unittest.TestCase):
         ops.start_browser = lambda: (_ for _ in ()).throw(RuntimeError("start failed"))
         with self.assertRaises(RuntimeError):
             run_batch(1, self.callbacks(), lambda *args: None, ops)
-        self.assertEqual(fake.events, [("cleanup", "任务结束")])
+        self.assertEqual(fake.events, [("cleanup", "Task complete")])
 
     def test_last_account_does_not_restart_browser(self):
         fake = FakeOps()
         batch = run_batch(1, self.callbacks(), lambda *args: None, fake.operations())
         self.assertEqual(batch.success_count, 1)
         self.assertNotIn("restart", fake.events)
-        self.assertEqual(fake.events[-1], ("cleanup", "任务结束"))
+        self.assertEqual(fake.events[-1], ("cleanup", "Task complete"))
 
     def test_cleanup_interval_does_not_repeat_after_unsaved_result(self):
         fake = FakeOps(save_ok=True)
@@ -98,7 +98,7 @@ class RegistrationFlowTests(unittest.TestCase):
             if isinstance(event, tuple)
             and len(event) > 1
             and isinstance(event[1], str)
-            and "已成功" in event[1]
+            and "accounts completed" in event[1]
         ]
         self.assertEqual(len(interval_cleanups), 1)
         self.assertEqual(batch.success_count, 1)
@@ -113,13 +113,13 @@ class RegistrationFlowTests(unittest.TestCase):
 
         batch = run_batch(1, self.callbacks(logs), broken_observer, fake.operations())
         self.assertEqual(batch.success_count, 1)
-        self.assertTrue(any("observer 执行失败" in line for line in logs))
+        self.assertTrue(any("Observer failed" in line for line in logs))
 
     def test_cleanup_failure_does_not_change_success_statistics(self):
         fake = FakeOps()
         ops = fake.operations()
         def cleanup(reason):
-            if "已成功" in reason:
+            if "accounts completed" in reason:
                 raise RuntimeError("cleanup failed")
             fake.events.append(("cleanup", reason))
         ops.cleanup = cleanup
@@ -145,7 +145,7 @@ class RegistrationFlowTests(unittest.TestCase):
         logs = []
         with self.assertRaisesRegex(RuntimeError, "original start error"):
             run_batch(1, self.callbacks(logs), lambda *args: None, ops)
-        self.assertTrue(any("清理失败" in line for line in logs))
+        self.assertTrue(any("Cleanup failed" in line for line in logs))
 
     def test_postprocessing_exceptions_become_warnings(self):
         fake = FakeOps()

@@ -1,4 +1,4 @@
-"""自动完成 xAI 登录、设备授权确认和相关页面交互。"""
+"""Automate xAI login, device authorization, and related page flows."""
 
 from __future__ import annotations
 
@@ -98,15 +98,15 @@ def _is_turnstile_challenge(text: str) -> bool:
     source = text or ""
     lower = source.lower()
     needles = (
-        "确认您是真人",
-        "确认你是真人",
+        "\u786e\u8ba4\u60a8\u662f\u771f\u4eba",
+        "\u786e\u8ba4\u4f60\u662f\u771f\u4eba",
         "verify you are human",
         "confirm you are human",
         "just a moment",
         "checking your browser",
         "cf-turnstile",
-        "进行人机验证",
-        "人机验证",
+        "\u8fdb\u884c\u4eba\u673a\u9a8c\u8bc1",
+        "\u4eba\u673a\u9a8c\u8bc1",
     )
     return any(needle in source or needle in lower for needle in needles)
 
@@ -169,21 +169,21 @@ def _cookie_banner_visible(text: str) -> bool:
     lower = source.lower()
     return any(
         needle in source or needle in lower
-        for needle in ("全部允许", "隐私偏好", "cookie", "privacy preference", "allow all")
+        for needle in ("\u5168\u90e8\u5141\u8bb8", "\u9690\u79c1\u504f\u597d", "cookie", "privacy preference", "allow all")
     )
 
 
 def _dismiss_cookie_banner(page: Any, log: LogFn) -> bool:
     for label in (
-        "接受所有 Cookie",
-        "接受所有Cookie",
-        "全部允许",
+        "\u63a5\u53d7\u6240\u6709 Cookie",
+        "\u63a5\u53d7\u6240\u6709Cookie",
+        "\u5168\u90e8\u5141\u8bb8",
         "Allow all",
         "Allow All Cookies",
         "Allow all cookies",
         "Accept All Cookies",
         "Accept all cookies",
-        "接受",
+        "\u63a5\u53d7",
         "Accept",
     ):
         if _click_exact(page, [label], log, real=True):
@@ -291,7 +291,7 @@ def _detect_auth_error(text: str, url: str = "") -> Optional[str]:
         ("wrong password", "wrong password"),
         ("invalid password", "wrong password"),
         ("incorrect password", "wrong password"),
-        ("密码错误", "wrong password"),
+        ("\u5bc6\u7801\u9519\u8bef", "wrong password"),
         ("wrong email", "wrong email"),
         ("invalid email", "wrong email"),
         ("attention required", "cloudflare challenge/block"),
@@ -365,7 +365,7 @@ def approve_device_code(
             if shot:
                 message = "%s shot=%s" % (auth_error, shot)
             raise BrowserConfirmError("auth failed: %s" % message)
-        if "device/done" in url or "设备已授权" in text or "device authorized" in text.lower():
+        if "device/done" in url or "\u8bbe\u5907\u5df2\u6388\u6743" in text or "device authorized" in text.lower():
             logger("device done page — waiting for token poll")
             _sleep(1.5)
             continue
@@ -378,13 +378,13 @@ def approve_device_code(
             if _dismiss_cookie_banner(page, logger):
                 _sleep(0.6)
                 continue
-        if "/consent" in url or "授权 Grok Build" in text or "Authorize Grok Build" in text:
+        if "/consent" in url or "\u6388\u6743 Grok Build" in text or "Authorize Grok Build" in text:
             phase = "consent"
             if _cookie_banner_visible(_visible_text(page)):
                 _dismiss_cookie_banner(page, logger)
                 _sleep(0.6)
                 continue
-            if _click_exact(page, ["允许", "Allow", "Authorize", "Approve"], logger, real=True):
+            if _click_exact(page, ["\u5141\u8bb8", "Allow", "Authorize", "Approve"], logger, real=True):
                 _sleep(2.5)
                 continue
             try:
@@ -393,11 +393,11 @@ def approve_device_code(
                     const forms = Array.from(document.querySelectorAll('form'));
                     const form = forms.find((x) => {
                       const text = (x.innerText || '');
-                      return text.includes('Grok Build') || text.includes('允许') || text.includes('Allow');
+                      return text.includes('Grok Build') || text.includes('\u5141\u8bb8') || text.includes('Allow');
                     }) || document.querySelector('form');
                     if (!form) return;
                     const formText = (form.innerText || '');
-                    if (formText.includes('隐私偏好') || formText.includes('全部允许') || /cookie/i.test(formText)) return;
+                    if (formText.includes('\u9690\u79c1\u504f\u597d') || formText.includes('\u5168\u90e8\u5141\u8bb8') || /cookie/i.test(formText)) return;
                     let actionInput = form.querySelector('input[name=action]');
                     if (!actionInput) {
                       actionInput = document.createElement('input');
@@ -408,7 +408,7 @@ def approve_device_code(
                     actionInput.value = 'allow';
                     const button = [...form.querySelectorAll('button')].find((b) => {
                       const text = (b.innerText || '').trim();
-                      return text === '允许' || text === 'Allow' || text === 'Authorize' || text === 'Approve';
+                      return text === '\u5141\u8bb8' || text === 'Allow' || text === 'Authorize' || text === 'Approve';
                     });
                     if (button) button.click();
                     else form.submit();
@@ -430,7 +430,7 @@ def approve_device_code(
                         logger("filled user_code")
                 except Exception:
                     pass
-            if _click_exact(page, ["继续", "Continue"], logger, real=False):
+            if _click_exact(page, ["\u7ee7\u7eed", "Continue"], logger, real=False):
                 _sleep(2.0)
                 continue
             try:
@@ -441,22 +441,22 @@ def approve_device_code(
                     continue
             except Exception:
                 pass
-        if "正在重定向" in text or ("/account" in url and "sign-in" not in url):
-            if _click_exact(page, ["继续", "Continue"], logger, real=False):
+        if "\u6b63\u5728\u91cd\u5b9a\u5411" in text or ("/account" in url and "sign-in" not in url):
+            if _click_exact(page, ["\u7ee7\u7eed", "Continue"], logger, real=False):
                 _sleep(2.0)
                 continue
         if _cookie_banner_visible(text):
             _dismiss_cookie_banner(page, logger)
             _sleep(0.4)
-        if "使用邮箱登录" in text or "Continue with email" in text:
-            if _click_exact(page, ["使用邮箱登录", "Continue with email", "Sign in with email"], logger, real=False):
+        if "\u4f7f\u7528\u90ae\u7bb1\u767b\u5f55" in text or "Continue with email" in text:
+            if _click_exact(page, ["\u4f7f\u7528\u90ae\u7bb1\u767b\u5f55", "Continue with email", "Sign in with email"], logger, real=False):
                 _sleep(1.5)
                 phase = "email"
                 continue
         if page.ele("css:input[type='email']", timeout=0.3) and not page.ele("css:input[type='password']", timeout=0.2):
             phase = "email"
             _fill(page, "css:input[type='email']", email, logger, "email")
-            if _click_exact(page, ["下一步", "Next", "Continue", "继续"], logger, real=False):
+            if _click_exact(page, ["\u4e0b\u4e00\u6b65", "Next", "Continue", "\u7ee7\u7eed"], logger, real=False):
                 _sleep(1.8)
                 continue
         if page.ele("css:input[type='password']", timeout=0.3):
@@ -469,7 +469,7 @@ def approve_device_code(
             _wait_turnstile(page, logger, 25, email=email, raise_on_timeout=True)
             _fill(page, "css:input[type='password']", password, logger, "password")
             _wait_turnstile(page, logger, 12, email=email, raise_on_timeout=False)
-            if not _click_exact(page, ["登录", "Sign in", "Log in"], logger, real=True):
+            if not _click_exact(page, ["\u767b\u5f55", "Sign in", "Log in"], logger, real=True):
                 try:
                     submit = page.ele("css:button[type='submit']", timeout=0.5) or page.ele("css:button[data-testid='sign-in-submit']", timeout=0.5)
                     if submit:

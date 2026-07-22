@@ -1,4 +1,4 @@
-"""提供共享的 HTTP 请求、代理处理和 Chromium 启动参数。"""
+"""Provide shared HTTP requests, proxy handling, and Chromium options."""
 import os
 import urllib.parse
 
@@ -108,7 +108,7 @@ def page_has_proxy_error(page_obj):
     return any(marker in text for marker in (
         "err_proxy", "proxy connection failed", "proxy server",
         "proxy authentication", "tunnel connection failed",
-        "无法连接到代理服务器", "代理服务器",
+        "\u65e0\u6cd5\u8fde\u63a5\u5230\u4ee3\u7406\u670d\u52a1\u5668", "\u4ee3\u7406\u670d\u52a1\u5668",
     ))
 
 
@@ -120,11 +120,11 @@ def prepare_browser_proxy(use_proxy=True, log_callback=None):
     if _proxy_has_auth(proxy) and parsed and (parsed.scheme or "http").lower() not in ("http", "https"):
         stripped = _strip_proxy_auth(proxy)
         if log_callback:
-            log_callback("[!] Chromium 暂不直接支持该认证代理协议，已使用去认证代理地址，失败将回退直连")
+            log_callback("[!] Chromium does not directly support this authenticated proxy protocol; using an unauthenticated URL and falling back to a direct connection on failure")
         return stripped, None
     logger = None
     if log_callback:
-        logger = lambda message: log_callback("[*] 已为 Chromium启动本地认证代理桥: %s" % message.split(": ", 1)[-1]) if "started authenticated proxy bridge" in message else log_callback(message)
+        logger = lambda message: log_callback("[*] Started a local authenticated proxy bridge for Chromium: %s" % message.split(": ", 1)[-1]) if "started authenticated proxy bridge" in message else log_callback(message)
     return prepare_chromium_proxy(proxy, log=logger)
 
 
@@ -138,7 +138,7 @@ def apply_browser_proxy_option(options, proxy):
         except Exception:
             pass
     if not hasattr(options, "set_argument"):
-        raise AttributeError("当前 DrissionPage ChromiumOptions 不支持设置浏览器代理")
+        raise AttributeError("This DrissionPage ChromiumOptions version does not support browser proxies")
     try:
         options.set_argument("--proxy-server=%s" % proxy)
     except TypeError:

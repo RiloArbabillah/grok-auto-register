@@ -1,4 +1,4 @@
-"""验证 CPA 浏览器会话的复用、取消、代理和清理行为。"""
+"""Test CPA browser session reuse, cancellation, proxying, and cleanup."""
 
 import unittest
 from cpa_xai import browser_session

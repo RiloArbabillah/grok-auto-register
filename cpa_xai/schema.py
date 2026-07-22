@@ -1,4 +1,4 @@
-"""定义并规范化 CPA xAI 凭证文件的数据结构。"""
+"""Define and normalize the CPA xAI credential schema."""
 
 import base64
 import json

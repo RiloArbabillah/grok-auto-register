@@ -1,4 +1,4 @@
-"""验证 CPA 凭证结构、写入和核心 mint 流程。"""
+"""Test CPA credential schema, writes, and core mint flow."""
 
 import tempfile
 import unittest

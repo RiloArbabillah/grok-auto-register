@@ -1,4 +1,4 @@
-"""解析认证代理并为 CPA 浏览器提供本地代理桥。"""
+"""Resolve authenticated proxies and provide a local browser bridge."""
 
 import base64
 import os

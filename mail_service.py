@@ -1,4 +1,4 @@
-"""接入临时邮箱服务并负责邮箱创建、邮件轮询和验证码提取。"""
+"""Create temporary mailboxes, poll messages, and extract verification codes."""
 import re
 import secrets
 import string
@@ -100,7 +100,7 @@ def cloudflare_create_account(api_base, address, password, api_key=None, expires
     return resp.json()
 
 def cloudflare_create_temp_address(api_base):
-    """适配 cloudflare_temp_email 新建地址接口并兼容 admin 创建模式。"""
+    """Create a cloudflare_temp_email address with optional admin mode."""
     path = get_cloudflare_path("cloudflare_path_accounts", "/api/new_address")
     url = f"{api_base}{path}"
     domain = cloudflare_next_default_domain()
@@ -120,11 +120,11 @@ def cloudflare_create_temp_address(api_base):
     try:
         data = resp.json()
     except Exception:
-        raise Exception(f"Cloudflare {path} 返回非JSON: {resp.text[:300]}")
+        raise Exception(f"Cloudflare {path} returned non-JSON: {resp.text[:300]}")
     address = data.get("address")
     jwt = data.get("jwt")
     if not address or not jwt:
-        raise Exception(f"Cloudflare {path} 缺少 address/jwt: {data}")
+        raise Exception(f"Cloudflare {path} response is missing address/jwt: {data}")
     return address, jwt
 
 def cloudflare_get_domains(api_base, api_key=None):
@@ -161,7 +161,7 @@ def cloudflare_get_message_detail(api_base, token, message_id):
         except Exception as exc:
             last_err = exc
             continue
-    raise Exception(f"Cloudflare 获取邮件详情失败: {last_err}")
+    raise Exception(f"Failed to fetch Cloudflare message details: {last_err}")
 
 def cloudflare_get_messages(api_base, token):
     headers = {"Authorization": f"Bearer {token}"}
@@ -173,7 +173,7 @@ def cloudflare_get_messages(api_base, token):
     try:
         data = resp.json()
     except Exception:
-        raise Exception(f"Cloudflare messages 返回非JSON: {resp.text[:300]}")
+        raise Exception(f"Cloudflare messages returned non-JSON: {resp.text[:300]}")
     return _pick_list_payload(data)
 
 def cloudflare_get_oai_code(
@@ -187,9 +187,9 @@ def cloudflare_get_oai_code(
 ):
     api_base = get_cloudflare_api_base()
     if not api_base:
-        raise Exception("Cloudflare API Base 未配置")
+        raise Exception("Cloudflare API base is not configured")
     deadline = time.time() + timeout
-    # 同一封邮件正文可能延迟可读，允许多次重试解析，避免偶发漏码
+    # A message body may become readable later, so retry parsing it.
     seen_attempts = {}
     next_resend_at = time.time() + 35
     while time.time() < deadline:
@@ -198,20 +198,20 @@ def cloudflare_get_oai_code(
             try:
                 resend_callback()
                 if log_callback:
-                    log_callback("[*] 已触发重新发送验证码")
+                    log_callback("[*] Requested a new verification code")
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] 触发重发验证码失败: {exc}")
+                    log_callback(f"[Debug] Failed to request a new verification code: {exc}")
             next_resend_at = time.time() + 35
         try:
             messages = cloudflare_get_messages(api_base, dev_token)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] Cloudflare 拉取邮件列表失败: {exc}")
+                log_callback(f"[Debug] Failed to fetch Cloudflare messages: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         if log_callback:
-            log_callback(f"[Debug] Cloudflare 本轮邮件数量: {len(messages)}")
+            log_callback(f"[Debug] Cloudflare messages in this poll: {len(messages)}")
 
         for msg in messages:
             msg_id = msg.get("id") or msg.get("msgid")
@@ -223,7 +223,7 @@ def cloudflare_get_oai_code(
             seen_attempts[msg_id] = attempt + 1
             recipients = [t.get("address", "").lower() for t in (msg.get("to") or [])]
             msg_addr = str(msg.get("address", "")).lower()
-            # 优先匹配目标邮箱；若结构不一致也允许继续解析，避免接口字段漂移导致漏码
+            # Prefer the target address while tolerating provider schema drift.
             address_matched = True
             if recipients:
                 address_matched = email.lower() in recipients
@@ -231,12 +231,12 @@ def cloudflare_get_oai_code(
                 address_matched = msg_addr == email.lower()
             if not address_matched:
                 if log_callback:
-                    log_callback(f"[Debug] 跳过疑似非目标邮件 id={msg_id} address={msg_addr} to={recipients}")
+                    log_callback(f"[Debug] Skipping probable non-target message id={msg_id} address={msg_addr} to={recipients}")
                 continue
-            # 先直接从列表项取内容，避免 detail 接口差异导致漏码
+            # Parse list content first to tolerate detail endpoint differences.
             subject = str(msg.get("subject", "") or "")
             combined = normalize_mail_body(msg)
-            # 再尝试 detail 接口补全内容
+            # Then request message details to fill missing content.
             try:
                 detail = cloudflare_get_message_detail(api_base, dev_token, msg_id)
                 detail_body = normalize_mail_body(detail)
@@ -246,18 +246,18 @@ def cloudflare_get_oai_code(
                     subject = str(detail.get("subject", "") or "")
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] Cloudflare detail接口失败，改用列表内容解析: {exc}")
+                    log_callback(f"[Debug] Cloudflare detail endpoint failed; parsing list content instead: {exc}")
             if log_callback:
-                log_callback(f"[Debug] Cloudflare 收到邮件: {subject}")
+                log_callback(f"[Debug] Cloudflare message received: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] Cloudflare 从邮件中提取到验证码: {code}")
+                    log_callback(f"[*] Extracted verification code from Cloudflare message: {code}")
                 return code
             elif log_callback:
-                log_callback(f"[Debug] 邮件已解析但未提取到验证码 id={msg_id} attempt={seen_attempts[msg_id]}")
+                log_callback(f"[Debug] Message parsed without a verification code id={msg_id} attempt={seen_attempts[msg_id]}")
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"Cloudflare 在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"Cloudflare verification message not received within {timeout}s")
 
 def cloudflare_get_token(api_base, address, password, api_key=None):
     headers = cloudflare_build_headers(content_type=True)
@@ -282,11 +282,11 @@ def cloudflare_get_token(api_base, address, password, api_key=None):
     return None
 
 def cloudflare_is_admin_create_path(path):
-    """判断当前创建邮箱路径是否为 cloudflare_temp_email 管理员创建接口。"""
+    """Return whether the configured path is the admin mailbox endpoint."""
     return str(path or "").rstrip("/").lower() == "/admin/new_address"
 
 def cloudflare_next_default_domain():
-    """按配置轮换选择 Cloudflare 临时邮箱域名。"""
+    """Select the next configured Cloudflare mailbox domain."""
     global _cf_domain_index
     domains = [x.strip() for x in str(config.get("defaultDomains", "") or "").split(",") if x.strip()]
     if not domains:
@@ -296,25 +296,25 @@ def cloudflare_next_default_domain():
     return domain
 
 def cloudmail_get_email_and_token():
-    """生成无需预创建账号的 Cloud Mail 收件地址。"""
+    """Generate a Cloud Mail address without pre-creating an account."""
     if not get_cloudmail_api_base():
-        raise Exception("Cloud Mail API Base 未配置")
+        raise Exception("Cloud Mail API base is not configured")
     if not get_cloudmail_public_token():
-        raise Exception("Cloud Mail Public Token 未配置")
+        raise Exception("Cloud Mail public token is not configured")
     domain = cloudmail_next_domain()
     if not domain:
-        raise Exception("Cloud Mail 收件域名未配置")
+        raise Exception("Cloud Mail inbox domains are not configured")
     address = f"{generate_username(12)}@{domain}"
-    # 仅返回非敏感占位凭证；公共 Token 始终只从 config.json 读取。
+    # Return a non-sensitive placeholder; the public token stays in config.json.
     return address, f"cloudmail:{address}"
 
 def cloudmail_get_messages(address):
     api_base = get_cloudmail_api_base()
     public_token = get_cloudmail_public_token()
     if not api_base:
-        raise Exception("Cloud Mail API Base 未配置")
+        raise Exception("Cloud Mail API base is not configured")
     if not public_token:
-        raise Exception("Cloud Mail Public Token 未配置")
+        raise Exception("Cloud Mail public token is not configured")
     payload = {
         "toEmail": address,
         "type": 0,
@@ -336,13 +336,13 @@ def cloudmail_get_messages(address):
     try:
         data = resp.json()
     except Exception:
-        raise Exception(f"Cloud Mail 邮件接口返回非JSON: {resp.text[:300]}")
+        raise Exception(f"Cloud Mail message endpoint returned non-JSON: {resp.text[:300]}")
     if not isinstance(data, dict):
-        raise Exception(f"Cloud Mail 邮件接口返回格式错误: {data}")
+        raise Exception(f"Cloud Mail message endpoint returned an invalid format: {data}")
     result_code = data.get("code")
     if result_code not in (None, 200, "200"):
         raise Exception(
-            f"Cloud Mail 邮件接口失败: code={result_code}, message={data.get('message', '')}"
+            f"Cloud Mail message endpoint failed: code={result_code}, message={data.get('message', '')}"
         )
     messages = data.get("data")
     if isinstance(messages, list):
@@ -358,7 +358,7 @@ def cloudmail_get_oai_code(
     cancel_callback=None,
     resend_callback=None,
 ):
-    # dev_token 是为了保持现有邮箱 Provider 调用契约；Cloud Mail 使用配置中的公共 Token。
+    # dev_token preserves the provider contract; Cloud Mail uses its configured public token.
     _ = dev_token
     deadline = time.time() + timeout
     seen_attempts = {}
@@ -369,20 +369,20 @@ def cloudmail_get_oai_code(
             try:
                 resend_callback()
                 if log_callback:
-                    log_callback("[*] 已触发重新发送验证码")
+                    log_callback("[*] Requested a new verification code")
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] 触发重发验证码失败: {exc}")
+                    log_callback(f"[Debug] Failed to request a new verification code: {exc}")
             next_resend_at = time.time() + 35
         try:
             messages = cloudmail_get_messages(email)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] Cloud Mail 拉取邮件列表失败: {exc}")
+                log_callback(f"[Debug] Failed to fetch Cloud Mail messages: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         if log_callback:
-            log_callback(f"[Debug] Cloud Mail 本轮邮件数量: {len(messages)}")
+            log_callback(f"[Debug] Cloud Mail messages in this poll: {len(messages)}")
         for msg in messages:
             msg_id = msg.get("emailId") or msg.get("email_id") or msg.get("id")
             if not msg_id:
@@ -402,22 +402,22 @@ def cloudmail_get_oai_code(
                 combined = f"verification code: {code_value}\n{combined}"
             subject = str(msg.get("subject", "") or "")
             if log_callback:
-                log_callback(f"[Debug] Cloud Mail 收到邮件: {subject}")
+                log_callback(f"[Debug] Cloud Mail message received: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] Cloud Mail 从邮件中提取到验证码: {code}")
+                    log_callback(f"[*] Extracted verification code from Cloud Mail message: {code}")
                 return code
             if log_callback:
                 log_callback(
-                    f"[Debug] Cloud Mail 邮件已解析但未提取到验证码 "
+                    f"[Debug] Cloud Mail message parsed without a verification code "
                     f"id={msg_id} attempt={seen_attempts[msg_id]}"
                 )
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"Cloud Mail 在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"Cloud Mail verification message not received within {timeout}s")
 
 def cloudmail_next_domain():
-    """按配置轮换选择 Cloud Mail 无人收件域名。"""
+    """Select the next configured Cloud Mail catch-all domain."""
     global _cloudmail_domain_index
     domains = [
         item.strip().lstrip("@")
@@ -456,7 +456,7 @@ def duckmail_get_oai_code(
             messages = get_messages(dev_token)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] 拉取邮件列表失败: {exc}")
+                log_callback(f"[Debug] Failed to fetch message list: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         for msg in messages:
@@ -474,19 +474,19 @@ def duckmail_get_oai_code(
                 detail = get_message_detail(dev_token, msg_id)
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] 获取邮件详情失败: {exc}")
+                    log_callback(f"[Debug] Failed to fetch message details: {exc}")
                 continue
             combined = normalize_mail_body(detail)
             subject = detail.get("subject", "")
             if log_callback:
-                log_callback(f"[Debug] 收到邮件: {subject}")
+                log_callback(f"[Debug] Message received: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] 从邮件中提取到验证码: {code}")
+                    log_callback(f"[*] Extracted verification code: {code}")
                 return code
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"Verification message not received within {timeout}s")
 
 def extract_verification_code(text, subject=""):
     if subject:
@@ -560,21 +560,21 @@ def get_email_and_token(api_key=None):
     if provider == "cloudflare":
         api_base = get_cloudflare_api_base()
         if not api_base:
-            raise Exception("Cloudflare API Base 未配置")
+            raise Exception("Cloudflare API base is not configured")
         try:
-            # cloudflare_temp_email 专用模式
+            # cloudflare_temp_email-specific mode.
             return cloudflare_create_temp_address(api_base)
         except Exception as primary_exc:
-            # 兜底回退到 Mail.tm 风格
+            # Fall back to the Mail.tm-compatible flow.
             key = api_key or get_cloudflare_api_key()
             domains = cloudflare_get_domains(api_base, api_key=key)
             if not domains:
-                raise Exception(f"Cloudflare 创建邮箱失败: {primary_exc}")
+                raise Exception(f"Failed to create Cloudflare mailbox: {primary_exc}")
             verified = [d for d in domains if d.get("isVerified")]
             target = verified[0] if verified else domains[0]
             domain = target.get("domain")
             if not domain:
-                raise Exception("Cloudflare 域名数据格式错误，缺少 domain 字段")
+                raise Exception("Invalid Cloudflare domain data: missing domain field")
             username = generate_username(10)
             address = f"{username}@{domain}"
             password = secrets.token_urlsafe(12)
@@ -583,7 +583,7 @@ def get_email_and_token(api_key=None):
             )
             token = cloudflare_get_token(api_base, address, password, api_key=key)
             if not token:
-                raise Exception("获取 Cloudflare 邮箱 token 失败")
+                raise Exception("Failed to obtain Cloudflare mailbox token")
             return address, token
     key = api_key or get_duckmail_api_key()
     domain = pick_domain(api_key=key)
@@ -593,7 +593,7 @@ def get_email_and_token(api_key=None):
     create_account(address, password, api_key=key, expires_in=0)
     token = get_token(address, password)
     if not token:
-        raise Exception("获取 DuckMail token 失败")
+        raise Exception("Failed to obtain DuckMail token")
     return address, token
 
 def get_email_provider():
@@ -681,7 +681,7 @@ def get_yyds_jwt():
 def pick_domain(api_key=None):
     domains = get_domains(api_key=api_key)
     if not domains:
-        raise Exception("DuckMail 没有返回任何可用域名")
+        raise Exception("DuckMail returned no available domains")
     private = [d for d in domains if d.get("ownerId")]
     verified_private = [d for d in private if d.get("isVerified")]
     if verified_private:
@@ -689,7 +689,7 @@ def pick_domain(api_key=None):
     public = [d for d in domains if d.get("isVerified")]
     if public:
         return public[0]["domain"]
-    raise Exception("DuckMail 无已验证域名可用")
+    raise Exception("DuckMail has no verified domains available")
 
 def yyds_create_account(address=None, domain=None, api_key=None, jwt=None):
     key = api_key or get_yyds_api_key()
@@ -711,7 +711,7 @@ def yyds_create_account(address=None, domain=None, api_key=None, jwt=None):
     data = resp.json()
     if data.get("success"):
         return data.get("data", {})
-    raise Exception(f"YYDS 创建邮箱失败: {data}")
+    raise Exception(f"Failed to create YYDS mailbox: {data}")
 
 def yyds_generate_username(length=10):
     chars = string.ascii_lowercase + string.digits
@@ -734,7 +734,7 @@ def yyds_get_email_and_token(api_key=None, jwt=None):
     key = api_key or get_yyds_api_key()
     token = jwt or get_yyds_jwt()
     if not token and not key:
-        raise Exception("YYDS API Key 或 JWT 未配置")
+        raise Exception("YYDS API key or JWT is not configured")
     domain = yyds_pick_domain(api_key=key, jwt=token)
     username = yyds_generate_username(10)
     result = yyds_create_account(
@@ -745,8 +745,8 @@ def yyds_get_email_and_token(api_key=None, jwt=None):
     if not temp_token:
         temp_token = yyds_get_token(address, api_key=key, jwt=token)
     if not temp_token:
-        raise Exception("获取 YYDS token 失败")
-    print(f"[*] 已创建 YYDS 邮箱: {address}")
+        raise Exception("Failed to obtain YYDS token")
+    print(f"[*] Created YYDS mailbox: {address}")
     return address, temp_token
 
 def yyds_get_message_detail(message_id, token=None, api_key=None, jwt=None):
@@ -762,7 +762,7 @@ def yyds_get_message_detail(message_id, token=None, api_key=None, jwt=None):
     data = resp.json()
     if data.get("success"):
         return data.get("data", {})
-    raise Exception(f"YYDS 获取邮件详情失败: {data}")
+    raise Exception(f"Failed to fetch YYDS message details: {data}")
 
 def yyds_get_messages(address, token=None, api_key=None, jwt=None):
     key = api_key or get_yyds_api_key()
@@ -800,7 +800,7 @@ def yyds_get_oai_code(
             messages = yyds_get_messages(address, token=token, jwt=jwt)
         except Exception as exc:
             if log_callback:
-                log_callback(f"[Debug] YYDS 拉取邮件列表失败: {exc}")
+                log_callback(f"[Debug] Failed to fetch YYDS messages: {exc}")
             sleep_with_cancel(poll_interval, cancel_callback)
             continue
         for msg in messages:
@@ -818,19 +818,19 @@ def yyds_get_oai_code(
                 detail = yyds_get_message_detail(msg_id, token=token, jwt=jwt)
             except Exception as exc:
                 if log_callback:
-                    log_callback(f"[Debug] YYDS 获取邮件详情失败: {exc}")
+                    log_callback(f"[Debug] Failed to fetch YYDS message details: {exc}")
                 continue
             combined = normalize_mail_body(detail)
             subject = detail.get("subject", "")
             if log_callback:
-                log_callback(f"[Debug] YYDS 收到邮件: {subject}")
+                log_callback(f"[Debug] YYDS message received: {subject}")
             code = extract_verification_code(combined, subject)
             if code:
                 if log_callback:
-                    log_callback(f"[*] YYDS 从邮件中提取到验证码: {code}")
+                    log_callback(f"[*] Extracted verification code from YYDS message: {code}")
                 return code
         sleep_with_cancel(poll_interval, cancel_callback)
-    raise Exception(f"YYDS 在 {timeout}s 内未收到验证码邮件")
+    raise Exception(f"YYDS verification message not received within {timeout}s")
 
 def yyds_get_token(address, api_key=None, jwt=None):
     key = api_key or get_yyds_api_key()
@@ -847,12 +847,12 @@ def yyds_get_token(address, api_key=None, jwt=None):
     data = resp.json()
     if data.get("success"):
         return data.get("data", {}).get("token")
-    raise Exception(f"YYDS 获取token失败: {data}")
+    raise Exception(f"Failed to obtain YYDS token: {data}")
 
 def yyds_pick_domain(api_key=None, jwt=None):
     domains = yyds_get_domains(api_key=api_key, jwt=jwt)
     if not domains:
-        raise Exception("YYDS 没有返回任何可用域名")
+        raise Exception("YYDS returned no available domains")
     private = [d for d in domains if d.get("isVerified") and not d.get("isPublic")]
     if private:
         return private[0]["domain"]
@@ -862,7 +862,7 @@ def yyds_pick_domain(api_key=None, jwt=None):
     verified = [d for d in domains if d.get("isVerified")]
     if verified:
         return verified[0]["domain"]
-    raise Exception("YYDS 无已验证域名可用")
+    raise Exception("YYDS has no verified domains available")
 
 
 
@@ -914,11 +914,11 @@ class CloudflareMailClient:
         response.raise_for_status()
         data, raw = self.json_or_text(response)
         if not data:
-            raise RuntimeError("%s 非JSON: %s" % (self.create_path, raw))
+            raise RuntimeError("%s returned non-JSON: %s" % (self.create_path, raw))
         address = str(data.get("address", "")).strip()
         jwt = str(data.get("jwt", "")).strip()
         if not address or not jwt:
-            raise RuntimeError("%s 缺少 address/jwt: %r" % (self.create_path, data))
+            raise RuntimeError("%s response is missing address/jwt: %r" % (self.create_path, data))
         return address, jwt
 
     def fetch_box(self, jwt, path, params):

@@ -1,4 +1,4 @@
-"""将 CPA xAI 凭证安全写入本地 JSON 文件。"""
+"""Safely write CPA xAI credentials to local JSON files."""
 
 import json
 import os

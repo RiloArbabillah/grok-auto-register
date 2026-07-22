@@ -1,4 +1,4 @@
-"""管理主注册浏览器生命周期并实现注册页面自动化操作。"""
+"""Manage the registration browser lifecycle and page automation."""
 import gc
 import random
 import re
@@ -84,14 +84,14 @@ def set_birth_date(session, log_callback=None):
         if is_cloudflare_block_response(res):
             return (
                 False,
-                "set_birth_date 被 grok.com 的 Cloudflare 防护拦截，HTTP "
+                "set_birth_date was blocked by grok.com Cloudflare protection, HTTP "
                 f"{res.status_code}",
             )
         return False, f"set_birth_date HTTP {res.status_code}: {response_preview(res)}"
     except Exception as e:
         if log_callback:
-            log_callback(f"[set_birth_date] 异常: {e}")
-        return False, f"set_birth_date 异常: {e}"
+            log_callback(f"[set_birth_date] Error: {e}")
+        return False, f"set_birth_date error: {e}"
 
 def set_tos_accepted(session, log_callback=None):
     url = "https://accounts.x.ai/auth_mgmt.AuthManagement/SetTosAcceptedVersion"
@@ -113,14 +113,14 @@ def set_tos_accepted(session, log_callback=None):
         if is_cloudflare_block_response(res):
             return (
                 False,
-                "set_tos_accepted 被 accounts.x.ai 的 Cloudflare 防护拦截，HTTP "
+                "set_tos_accepted was blocked by accounts.x.ai Cloudflare protection, HTTP "
                 f"{res.status_code}",
             )
         return False, f"set_tos_accepted HTTP {res.status_code}: {response_preview(res)}"
     except Exception as e:
         if log_callback:
-            log_callback(f"[set_tos_accepted] 异常: {e}")
-        return False, f"set_tos_accepted 异常: {e}"
+            log_callback(f"[set_tos_accepted] Error: {e}")
+        return False, f"set_tos_accepted error: {e}"
 
 def encode_grpc_nsfw_settings():
     field1_content = bytes([0x10, 0x01])
@@ -151,14 +151,14 @@ def update_nsfw_settings(session, log_callback=None):
         if is_cloudflare_block_response(res):
             return (
                 False,
-                "update_nsfw_settings 被 grok.com 的 Cloudflare 防护拦截，HTTP "
+                "update_nsfw_settings was blocked by grok.com Cloudflare protection, HTTP "
                 f"{res.status_code}",
             )
         return False, f"update_nsfw_settings HTTP {res.status_code}: {response_preview(res)}"
     except Exception as e:
         if log_callback:
-            log_callback(f"[update_nsfw] 异常: {e}")
-        return False, f"update_nsfw_settings 异常: {e}"
+            log_callback(f"[update_nsfw] Error: {e}")
+        return False, f"update_nsfw_settings error: {e}"
 
 def enable_nsfw_for_token(token, cf_clearance="", log_callback=None):
     proxies = get_proxies()
@@ -183,9 +183,9 @@ def enable_nsfw_for_token(token, cf_clearance="", log_callback=None):
             ok, message = update_nsfw_settings(session, log_callback)
             if not ok:
                 return False, message
-            return True, "成功开启 NSFW"
+            return True, "NSFW enabled"
     except Exception as e:
-        return False, f"异常: {str(e)}"
+        return False, f"Error: {str(e)}"
 
 def stop_browser_proxy_bridge():
     global browser_proxy_bridge
@@ -210,12 +210,12 @@ def start_browser(log_callback=None, use_proxy=True):
             tabs = browser.get_tabs()
             page = tabs[-1] if tabs else browser.new_tab()
             if log_callback and getattr(browser, "user_data_path", None):
-                log_callback(f"[Debug] 当前浏览器资料目录: {browser.user_data_path}")
+                log_callback(f"[Debug] Browser profile directory: {browser.user_data_path}")
             if log_callback and get_configured_proxy():
-                mode = "代理" if browser_started_with_proxy else "直连"
-                log_callback(f"[*] 浏览器网络模式: {mode}")
+                mode = "proxy" if browser_started_with_proxy else "direct"
+                log_callback(f"[*] Browser network mode: {mode}")
             if log_callback and attempt > 1:
-                log_callback(f"[*] 浏览器第 {attempt} 次启动成功")
+                log_callback(f"[*] Browser started on attempt {attempt}")
             return browser, page
         except Exception as exc:
             last_exc = exc
@@ -225,8 +225,8 @@ def start_browser(log_callback=None, use_proxy=True):
                 except Exception:
                     pass
             if log_callback:
-                mode = "代理" if proxy_enabled else "直连"
-                log_callback(f"[Debug] 浏览器{mode}启动失败(第{attempt}/4次): {exc}")
+                mode = "proxy" if proxy_enabled else "direct"
+                log_callback(f"[Debug] Browser failed to start in {mode} mode (attempt {attempt}/4): {exc}")
             try:
                 if browser is not None:
                     browser.quit(del_data=True)
@@ -237,7 +237,7 @@ def start_browser(log_callback=None, use_proxy=True):
             browser_proxy_bridge = None
             browser_started_with_proxy = False
             time.sleep(min(1.5 * attempt, 4))
-    raise Exception(f"浏览器启动失败，已重试4次: {last_exc}")
+    raise Exception(f"Browser failed to start after 4 attempts: {last_exc}")
 
 def stop_browser():
     global browser, page, browser_started_with_proxy
@@ -255,19 +255,19 @@ def restart_browser(log_callback=None, use_proxy=True):
     stop_browser()
     return start_browser(log_callback=log_callback, use_proxy=use_proxy)
 
-def cleanup_runtime_memory(log_callback=None, reason="定期清理"):
+def cleanup_runtime_memory(log_callback=None, reason="Scheduled cleanup"):
     if log_callback:
-        log_callback(f"[*] {reason}: 关闭浏览器并清理内存")
+        log_callback(f"[*] {reason}: closing browser and cleaning memory")
     stop_browser()
     try:
         from cpa_xai.browser_confirm import shutdown_mint_browsers
         shutdown_mint_browsers()
     except Exception as exc:
         if log_callback:
-            log_callback(f"[Debug] CPA 浏览器清理失败: {exc}")
+            log_callback(f"[Debug] CPA browser cleanup failed: {exc}")
     collected = gc.collect()
     if log_callback:
-        log_callback(f"[*] Python GC 已回收对象数: {collected}")
+        log_callback(f"[*] Python GC collected {collected} objects")
 
 def refresh_active_page():
     global browser, page
@@ -289,7 +289,7 @@ def click_email_signup_button(timeout=10, log_callback=None, cancel_callback=Non
     while time.time() < deadline:
         raise_if_cancelled(cancel_callback)
         if log_callback:
-            log_callback("[Debug] 尝试查找“使用邮箱注册”按钮...")
+            log_callback("[Debug] Looking for the email registration button...")
 
         clicked = page.run_js(r"""
 function isVisible(node) {
@@ -311,11 +311,11 @@ function nodeText(node) {
 function scoreEntry(node) {
     const compact = nodeText(node).replace(/\s+/g, '');
     const lower = compact.toLowerCase();
-    if (compact.includes('使用邮箱注册')) return 100;
+    if (compact.includes('\u4f7f\u7528\u90ae\u7bb1\u6ce8\u518c')) return 100;
     if (lower.includes('signupwithemail')) return 95;
     if (lower.includes('continuewithemail')) return 90;
     if (lower.includes('email') && (lower.includes('sign') || lower.includes('continue') || lower.includes('use') || lower.includes('with'))) return 80;
-    if (lower === 'email' || lower.includes('邮箱')) return 70;
+    if (lower === 'email' || lower.includes('\u90ae\u7bb1')) return 70;
     return 0;
 }
 const candidates = Array.from(document.querySelectorAll('button, a, [role="button"]'))
@@ -334,21 +334,21 @@ return candidates[0].text || true;
         if clicked:
             if log_callback:
                 detail = f": {clicked}" if isinstance(clicked, str) else ""
-                log_callback(f"[*] 已点击「使用邮箱注册」按钮{detail}")
+                log_callback(f"[*] Clicked the email registration button{detail}")
             sleep_with_cancel(2, cancel_callback)
             return True
 
         if log_callback:
             current_url = page.url if page else "none"
-            log_callback(f"[Debug] 当前URL: {current_url}")
+            log_callback(f"[Debug] Current URL: {current_url}")
 
         sleep_with_cancel(1, cancel_callback)
 
     if log_callback:
         page_html = page.html[:500] if page else "no page"
-        log_callback(f"[Debug] 页面内容片段: {page_html}")
+        log_callback(f"[Debug] Page content excerpt: {page_html}")
 
-    raise Exception("未找到「使用邮箱注册」按钮")
+    raise Exception("Email registration button not found")
 
 def open_signup_page(log_callback=None, cancel_callback=None):
     global browser, page
@@ -356,7 +356,7 @@ def open_signup_page(log_callback=None, cancel_callback=None):
     if browser is None:
         start_browser(log_callback=log_callback)
         if log_callback:
-            log_callback("[*] 浏览器已启动")
+            log_callback("[*] Browser started")
 
     def _open_with_current_browser():
         global page
@@ -365,7 +365,7 @@ def open_signup_page(log_callback=None, cancel_callback=None):
             page.get(SIGNUP_URL)
         except Exception as e:
             if log_callback:
-                log_callback(f"[Debug] 打开URL异常: {e}")
+                log_callback(f"[Debug] Failed to open URL: {e}")
             page = browser.new_tab(SIGNUP_URL)
         page.wait.doc_loaded()
 
@@ -374,7 +374,7 @@ def open_signup_page(log_callback=None, cancel_callback=None):
     except Exception as e:
         if browser_started_with_proxy and get_configured_proxy():
             if log_callback:
-                log_callback(f"[!] 浏览器代理访问注册页失败，自动回退直连: {e}")
+                log_callback(f"[!] Proxy failed to open registration page; falling back to direct connection: {e}")
             restart_browser(log_callback=log_callback, use_proxy=False)
             _open_with_current_browser()
         else:
@@ -382,13 +382,13 @@ def open_signup_page(log_callback=None, cancel_callback=None):
 
     if browser_started_with_proxy and page_has_proxy_error(page):
         if log_callback:
-            log_callback("[!] 浏览器页面显示代理错误，自动回退直连")
+            log_callback("[!] Browser displayed a proxy error; falling back to direct connection")
         restart_browser(log_callback=log_callback, use_proxy=False)
         _open_with_current_browser()
 
     sleep_with_cancel(2, cancel_callback)
     if log_callback:
-        log_callback(f"[*] 当前URL: {page.url}")
+        log_callback(f"[*] Current URL: {page.url}")
     click_email_signup_button(
         log_callback=log_callback, cancel_callback=cancel_callback
     )
@@ -413,9 +413,9 @@ def fill_email_and_submit(timeout=45, log_callback=None, cancel_callback=None):
     raise_if_cancelled(cancel_callback)
     email, dev_token = get_email_and_token()
     if not email or not dev_token:
-        raise Exception("获取邮箱失败")
+        raise Exception("Failed to obtain email address")
     if log_callback:
-        log_callback(f"[*] 已创建邮箱: {email}")
+        log_callback(f"[*] Created email address: {email}")
     deadline = time.time() + timeout
     last_diag_time = 0
     last_reclick_time = 0
@@ -465,7 +465,7 @@ function emailCandidates() {
         const type = (node.getAttribute('type') || '').toLowerCase();
         if (['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'search'].includes(type)) continue;
         const meta = textOf(node).toLowerCase();
-        if (meta.includes('email') || meta.includes('e-mail') || meta.includes('mail') || meta.includes('邮箱') || meta.includes('电子邮件')) {
+        if (meta.includes('email') || meta.includes('e-mail') || meta.includes('mail') || meta.includes('\u90ae\u7bb1') || meta.includes('\u7535\u5b50\u90ae\u4ef6')) {
             direct.push(node);
         }
     }
@@ -545,11 +545,11 @@ function nodeText(node) {
 function scoreEntry(node) {
     const compact = nodeText(node).replace(/\s+/g, '');
     const lower = compact.toLowerCase();
-    if (compact.includes('使用邮箱注册')) return 100;
+    if (compact.includes('\u4f7f\u7528\u90ae\u7bb1\u6ce8\u518c')) return 100;
     if (lower.includes('signupwithemail')) return 95;
     if (lower.includes('continuewithemail')) return 90;
     if (lower.includes('email') && (lower.includes('sign') || lower.includes('continue') || lower.includes('use') || lower.includes('with'))) return 80;
-    if (lower === 'email' || lower.includes('邮箱')) return 70;
+    if (lower === 'email' || lower.includes('\u90ae\u7bb1')) return 70;
     return 0;
 }
 const candidates = Array.from(document.querySelectorAll('button, a, [role="button"]'))
@@ -564,18 +564,18 @@ return candidates[0].text || true;
                 last_reclick_time = now
                 if reclicked and log_callback:
                     detail = f": {reclicked}" if isinstance(reclicked, str) else ""
-                    log_callback(f"[Debug] 邮箱输入框未出现，已再次触发邮箱注册入口{detail}")
+                    log_callback(f"[Debug] Email input did not appear; triggered email registration again{detail}")
             if log_callback and now - last_diag_time >= 5:
                 last_diag_time = now
                 inputs = " | ".join((filled or {}).get("inputs", [])[:6]) if isinstance(filled, dict) else ""
                 buttons = " | ".join((filled or {}).get("buttons", [])[:8]) if isinstance(filled, dict) else ""
                 url = (filled or {}).get("url", page.url if page else "") if isinstance(filled, dict) else (page.url if page else "")
-                log_callback(f"[Debug] 等待邮箱输入框: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}")
+                log_callback(f"[Debug] Waiting for email input: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}")
             sleep_with_cancel(0.5, cancel_callback)
             continue
         if state != "filled":
             if log_callback:
-                log_callback(f"[Debug] 邮箱输入框已出现，但写入失败: {filled}")
+                log_callback(f"[Debug] Email input appeared, but writing failed: {filled}")
             sleep_with_cancel(0.5, cancel_callback)
             continue
         sleep_with_cancel(0.8, cancel_callback)
@@ -608,7 +608,7 @@ function emailCandidates() {
         const type = (node.getAttribute('type') || '').toLowerCase();
         if (['hidden', 'submit', 'button', 'checkbox', 'radio', 'file', 'search'].includes(type)) continue;
         const meta = textOf(node).toLowerCase();
-        if (meta.includes('email') || meta.includes('e-mail') || meta.includes('mail') || meta.includes('邮箱') || meta.includes('电子邮件')) {
+        if (meta.includes('email') || meta.includes('e-mail') || meta.includes('mail') || meta.includes('\u90ae\u7bb1') || meta.includes('\u7535\u5b50\u90ae\u4ef6')) {
             direct.push(node);
         }
     }
@@ -624,11 +624,11 @@ const submitButton = buttons.find((node) => {
     const text = textOf(node).replace(/\s+/g, '');
     const lower = text.toLowerCase();
     return (
-        text === '注册' ||
-        text.includes('注册') ||
-        text.includes('继续') ||
-        text.includes('下一步') ||
-        text.includes('确认') ||
+        text === '\u6ce8\u518c' ||
+        text.includes('\u6ce8\u518c') ||
+        text.includes('\u7ee7\u7eed') ||
+        text.includes('\u4e0b\u4e00\u6b65') ||
+        text.includes('\u786e\u8ba4') ||
         lower.includes('signup') ||
         lower.includes('sign up') ||
         lower.includes('continue') ||
@@ -656,7 +656,7 @@ return 'enter';
         if clicked:
             if log_callback:
                 detail = f" ({clicked})" if isinstance(clicked, str) else ""
-                log_callback(f"[*] 已填写邮箱并提交: {email}{detail}")
+                log_callback(f"[*] Entered and submitted email: {email}{detail}")
             return email, dev_token
         sleep_with_cancel(0.5, cancel_callback)
     if last_snapshot:
@@ -664,9 +664,9 @@ return 'enter';
         buttons = " | ".join(last_snapshot.get("buttons", [])[:8])
         url = last_snapshot.get("url", page.url if page else "")
         raise Exception(
-            f"未找到邮箱输入框或注册按钮，最后页面: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}"
+            f"Email input or registration button not found; final page: url={url}; inputs={inputs or 'none'}; buttons={buttons or 'none'}"
         )
-    raise Exception("未找到邮箱输入框或注册按钮")
+    raise Exception("Email input or registration button not found")
 
 def fill_code_and_submit(email, dev_token, timeout=180, log_callback=None, cancel_callback=None):
     def _resend_code():
@@ -675,7 +675,7 @@ def fill_code_and_submit(email, dev_token, timeout=180, log_callback=None, cance
 const nodes = Array.from(document.querySelectorAll('button, a, [role="button"]'));
 const target = nodes.find((node) => {
   const t = (node.innerText || node.textContent || '').replace(/\s+/g, '').toLowerCase();
-  return t.includes('重新发送') || t.includes('resend') || t.includes('再次发送');
+  return t.includes('\u91cd\u65b0\u53d1\u9001') || t.includes('resend') || t.includes('\u518d\u6b21\u53d1\u9001');
 });
 if (target && !target.disabled) { target.click(); return true; }
 return false;
@@ -690,7 +690,7 @@ return false;
         resend_callback=_resend_code,
     )
     if not code:
-        raise Exception("获取验证码失败")
+        raise Exception("Failed to obtain verification code")
     clean_code = str(code).replace("-", "").strip()
     deadline = time.time() + timeout
 
@@ -762,7 +762,7 @@ return 'not-ready';
             continue
         if "failed" in str(filled):
             if log_callback:
-                log_callback(f"[Debug] 验证码填写失败: {filled}")
+                log_callback(f"[Debug] Failed to enter verification code: {filled}")
             sleep_with_cancel(0.5, cancel_callback)
             continue
 
@@ -783,9 +783,9 @@ const buttons = Array.from(document.querySelectorAll('button[type=\"submit\"], b
 const btn = buttons.find((node) => {
     const t = (node.innerText || node.textContent || '').replace(/\\s+/g, '').toLowerCase();
     return (
-        t.includes('确认邮箱') ||
-        t.includes('继续') ||
-        t.includes('下一步') ||
+        t.includes('\u786e\u8ba4\u90ae\u7bb1') ||
+        t.includes('\u7ee7\u7eed') ||
+        t.includes('\u4e0b\u4e00\u6b65') ||
         t.includes('confirm') ||
         t.includes('continue') ||
         t.includes('next')
@@ -801,18 +801,18 @@ return 'clicked';
 
         if clicked == "clicked" or clicked == "no-button":
             if log_callback:
-                log_callback(f"[*] 已填写验证码并提交: {code}")
+                log_callback(f"[*] Entered and submitted verification code: {code}")
             sleep_with_cancel(1.5, cancel_callback)
             return code
 
         sleep_with_cancel(0.5, cancel_callback)
 
-    raise Exception("验证码已获取，但自动填写/提交失败")
+    raise Exception("Verification code was obtained, but automatic entry/submission failed")
 
 def getTurnstileToken(log_callback=None, cancel_callback=None):
     global page
     if page is None:
-        raise Exception("页面未就绪，无法执行 Turnstile")
+        raise Exception("Page is not ready for Turnstile")
 
     try:
         page.run_js(
@@ -839,7 +839,7 @@ try {
             token = str(token or "").strip()
             if len(token) >= 80:
                 if log_callback:
-                    log_callback(f"[*] Turnstile 已通过，token长度={len(token)}")
+                    log_callback(f"[*] Turnstile passed; token length={len(token)}")
                 return token
 
             challenge_input = page.ele("@name=cf-turnstile-response")
@@ -872,7 +872,7 @@ Object.defineProperty(MouseEvent.prototype, 'screenY', { value: sy });
                     except Exception:
                         pass
             else:
-                # 兜底：尝试触发页面上可见的 Turnstile 容器
+                # Fallback: trigger a visible Turnstile container.
                 page.run_js(
                     """
 const nodes = Array.from(document.querySelectorAll('div,span,iframe')).filter((n) => {
@@ -886,7 +886,7 @@ if (nodes.length && typeof nodes[0].click === 'function') nodes[0].click();
             pass
         sleep_with_cancel(1, cancel_callback)
 
-    raise Exception("Turnstile 获取 token 失败")
+    raise Exception("Failed to obtain Turnstile token")
 
 def build_profile():
     given_name_pool = [
@@ -958,8 +958,8 @@ function setInputValue(input, value) {
     return String(input.value || '').trim() === String(value || '').trim();
 }
 
-const givenInput = pickInput('input[data-testid="givenName"], input[name="givenName"], input[autocomplete="given-name"], input[aria-label*="名"]');
-const familyInput = pickInput('input[data-testid="familyName"], input[name="familyName"], input[autocomplete="family-name"], input[aria-label*="姓"]');
+const givenInput = pickInput('input[data-testid="givenName"], input[name="givenName"], input[autocomplete="given-name"], input[aria-label*="\u540d"]');
+const familyInput = pickInput('input[data-testid="familyName"], input[name="familyName"], input[autocomplete="family-name"], input[aria-label*="\u59d3"]');
 const passwordInput = pickInput('input[data-testid="password"], input[name="password"], input[type="password"], input[autocomplete="new-password"]');
 
 if (!givenInput || !familyInput || !passwordInput) return 'not-ready';
@@ -975,10 +975,10 @@ const buttons = Array.from(document.querySelectorAll('button[type="submit"], but
 });
 const submitBtn = buttons.find((node) => {
     const t = (node.innerText || node.textContent || '').replace(/\\s+/g, '').toLowerCase();
-    return t.includes('完成注册') || t.includes('创建账户') || t.includes('signup') || t.includes('createaccount');
+    return t.includes('\u5b8c\u6210\u6ce8\u518c') || t.includes('\u521b\u5efa\u8d26\u6237') || t.includes('signup') || t.includes('createaccount');
 });
 
-// 必须等待 Cloudflare 校验通过后再提交
+// Wait for Cloudflare verification before submitting.
 const cfInput = document.querySelector('input[name="cf-turnstile-response"]');
 const cfPresent = !!cfInput
   || !!document.querySelector('iframe[src*="turnstile"], div.cf-turnstile, [data-sitekey], script[src*="turnstile"]');
@@ -1002,19 +1002,19 @@ return 'filled-no-submit';
                 form_filled_once = True
                 if log_callback:
                     token_len = filled.split(":", 1)[1] if ":" in filled else "0"
-                    log_callback(f"[*] 资料已填写，等待 Cloudflare 人机验证通过... 当前token长度={token_len}")
+                    log_callback(f"[*] Profile completed; waiting for Cloudflare verification... token length={token_len}")
                 if token_len == "0":
                     pause_seconds = random.uniform(1, 3)
                     if log_callback:
-                        log_callback(f"[*] Cloudflare token 为空，暂停 {pause_seconds:.1f}s 后继续检测")
+                        log_callback(f"[*] Cloudflare token is empty; waiting {pause_seconds:.1f}s before retrying")
                     sleep_with_cancel(pause_seconds, cancel_callback)
                 now = time.time()
                 if wait_cf_since is None:
                     wait_cf_since = now
-                # 卡住后自动二次复用 Turnstile 组件
+                # Retry the Turnstile component when the flow stalls.
                 if now - wait_cf_since >= 12 and now - last_cf_retry_at >= 8:
                     if log_callback:
-                        log_callback("[*] Cloudflare 验证卡住，开始二次复用 Turnstile...")
+                        log_callback("[*] Cloudflare verification is stuck; retrying Turnstile...")
                     try:
                         token = getTurnstileToken(log_callback=log_callback, cancel_callback=cancel_callback)
                         if token:
@@ -1033,10 +1033,10 @@ return String(cfInput.value || '').trim().length;
                                 token,
                             )
                             if log_callback:
-                                log_callback(f"[*] Turnstile 二次复用完成，回填长度={synced}")
+                                log_callback(f"[*] Turnstile retry completed; synchronized length={synced}")
                     except Exception as cf_exc:
                         if log_callback:
-                            log_callback(f"[Debug] Turnstile 二次复用失败: {cf_exc}")
+                            log_callback(f"[Debug] Turnstile retry failed: {cf_exc}")
                     last_cf_retry_at = now
                 sleep_with_cancel(0.8, cancel_callback)
                 continue
@@ -1044,7 +1044,7 @@ return String(cfInput.value || '').trim().length;
             if filled in ("ready-to-submit", "filled-no-submit"):
                 form_filled_once = True
             elif filled == "fill-failed" and log_callback:
-                log_callback("[Debug] 资料输入失败，重试中...")
+                log_callback("[Debug] Profile entry failed; retrying...")
                 sleep_with_cancel(0.5, cancel_callback)
                 continue
             elif filled == "not-ready":
@@ -1084,7 +1084,7 @@ const buttons = Array.from(document.querySelectorAll('button[type="submit"], but
 });
 const submitBtn = buttons.find((node) => {
     const t = buttonText(node).replace(/\s+/g, '').toLowerCase();
-    return t.includes('完成注册') || t.includes('创建账户') || t.includes('signup') || t.includes('createaccount');
+    return t.includes('\u5b8c\u6210\u6ce8\u518c') || t.includes('\u521b\u5efa\u8d26\u6237') || t.includes('signup') || t.includes('createaccount');
 });
 if (!submitBtn) {
     const visibleTexts = buttons.map(buttonText).filter(Boolean).slice(0, 8).join(' | ');
@@ -1099,13 +1099,13 @@ return 'submitted';
         if isinstance(submit_state, str) and submit_state.startswith("wait-cloudflare"):
             if log_callback:
                 token_len = submit_state.split(":", 1)[1] if ":" in submit_state else "0"
-                log_callback(f"[*] 等待 Cloudflare 人机验证通过后再提交... 当前token长度={token_len}")
+                log_callback(f"[*] Waiting for Cloudflare verification before submitting... token length={token_len}")
             now = time.time()
             if wait_cf_since is None:
                 wait_cf_since = now
             if now - wait_cf_since >= 12 and now - last_cf_retry_at >= 8:
                 if log_callback:
-                    log_callback("[*] 提交前仍卡住，自动再次复用 Turnstile...")
+                    log_callback("[*] Still stuck before submission; retrying Turnstile...")
                 try:
                     token = getTurnstileToken(log_callback=log_callback, cancel_callback=cancel_callback)
                     if token:
@@ -1124,27 +1124,27 @@ return String(cfInput.value || '').trim().length;
                             token,
                         )
                         if log_callback:
-                            log_callback(f"[*] Turnstile 二次复用完成，回填长度={synced}")
+                            log_callback(f"[*] Turnstile retry completed; synchronized length={synced}")
                 except Exception as cf_exc:
                     if log_callback:
-                        log_callback(f"[Debug] Turnstile 二次复用失败: {cf_exc}")
+                        log_callback(f"[Debug] Turnstile retry failed: {cf_exc}")
                 last_cf_retry_at = now
             sleep_with_cancel(0.8, cancel_callback)
             continue
 
         if submit_state == "submitted":
             if log_callback:
-                log_callback(f"[*] 已填写注册资料并提交: {given_name} {family_name}")
+                log_callback(f"[*] Completed and submitted registration profile: {given_name} {family_name}")
             return {"given_name": given_name, "family_name": family_name, "password": password}
         wait_cf_since = None
         if isinstance(submit_state, str) and submit_state.startswith("no-submit-button") and log_callback:
             visible_buttons = submit_state.split(":", 1)[1] if ":" in submit_state else ""
-            suffix = f" 可见按钮: {visible_buttons}" if visible_buttons else ""
-            log_callback(f"[Debug] 未找到提交按钮，继续等待页面稳定...{suffix}")
+            suffix = f" visible buttons: {visible_buttons}" if visible_buttons else ""
+            log_callback(f"[Debug] Submit button not found; waiting for page stability...{suffix}")
 
         sleep_with_cancel(0.5, cancel_callback)
 
-    raise Exception("最终注册页资料填写失败")
+    raise Exception("Failed to complete the final registration page")
 
 def wait_for_sso_cookie(timeout=120, log_callback=None, cancel_callback=None):
     deadline = time.time() + timeout
@@ -1165,7 +1165,7 @@ def wait_for_sso_cookie(timeout=120, log_callback=None, cancel_callback=None):
                 sleep_with_cancel(1, cancel_callback)
                 continue
 
-            # 仍停留在“完成注册”页时，若 Cloudflare 已通过，周期性重试点击提交
+            # Retry submit periodically when Cloudflare passed but the final page remains.
             now = time.time()
             if now - last_submit_retry >= 2.5:
                 retried = page.run_js(
@@ -1180,7 +1180,7 @@ function isVisible(node) {
 const titleHit = !!Array.from(document.querySelectorAll('h1,h2,div,span')).find((el) => {
     const t = (el.textContent || '').replace(/\s+/g, '');
     const lower = t.toLowerCase();
-    return t.includes('完成注册') || lower.includes('completeyoursignup') || lower.includes('completesignup');
+    return t.includes('\u5b8c\u6210\u6ce8\u518c') || lower.includes('completeyoursignup') || lower.includes('completesignup');
 });
 if (!titleHit) return 'not-final-page';
 
@@ -1207,7 +1207,7 @@ const buttons = Array.from(document.querySelectorAll('button[type="submit"], but
 });
 const submitBtn = buttons.find((node) => {
     const t = buttonText(node).replace(/\s+/g, '').toLowerCase();
-    return t.includes('完成注册') || t.includes('创建账户') || t.includes('signup') || t.includes('createaccount');
+    return t.includes('\u5b8c\u6210\u6ce8\u518c') || t.includes('\u521b\u5efa\u8d26\u6237') || t.includes('signup') || t.includes('createaccount');
 });
 if (!submitBtn) {
     const visibleTexts = buttons.map(buttonText).filter(Boolean).slice(0, 8).join(' | ');
@@ -1220,24 +1220,24 @@ return 'final-page-clicked-submit';
                 )
                 last_submit_retry = now
                 if log_callback and (retried == "final-page-clicked-submit" or (isinstance(retried, str) and retried.startswith("final-page-no-submit"))):
-                    log_callback(f"[Debug] 最终页状态: {retried}")
+                    log_callback(f"[Debug] Final page state: {retried}")
                 if isinstance(retried, str) and retried.startswith("final-page-no-submit"):
                     if retried != final_no_submit_state:
                         final_no_submit_state = retried
                         final_no_submit_since = now
                     elif final_no_submit_since and now - final_no_submit_since >= final_no_submit_timeout:
                         raise AccountRetryNeeded(
-                            f"最终注册页状态 {final_no_submit_timeout}s 未变化且未找到提交按钮，重试当前账号: {retried}"
+                            f"Final registration page was unchanged for {final_no_submit_timeout}s and no submit button was found; retrying account: {retried}"
                         )
                 else:
                     final_no_submit_state = ""
                     final_no_submit_since = None
                 if log_callback and isinstance(retried, str) and retried.startswith("final-page-wait-cf"):
                     token_len = retried.split(":", 1)[1] if ":" in retried else "0"
-                    log_callback(f"[Debug] 最终页状态: final-page-wait-cf, token长度={token_len}")
+                    log_callback(f"[Debug] Final page state: final-page-wait-cf, token length={token_len}")
                     if now - last_cf_retry_at >= 10:
                         if log_callback:
-                            log_callback("[*] 最终页 Cloudflare 卡住，自动二次复用 Turnstile...")
+                            log_callback("[*] Cloudflare is stuck on final page; retrying Turnstile...")
                         try:
                             token = getTurnstileToken(log_callback=log_callback, cancel_callback=cancel_callback)
                             if token:
@@ -1256,10 +1256,10 @@ return String(cfInput.value || '').trim().length;
                                     token,
                                 )
                                 if log_callback:
-                                    log_callback(f"[*] 最终页 Turnstile 二次复用完成，回填长度={synced}")
+                                    log_callback(f"[*] Final-page Turnstile retry completed; synchronized length={synced}")
                         except Exception as cf_exc:
                             if log_callback:
-                                log_callback(f"[Debug] 最终页 Turnstile 二次复用失败: {cf_exc}")
+                                log_callback(f"[Debug] Final-page Turnstile retry failed: {cf_exc}")
                         last_cf_retry_at = now
 
             cookies = page.cookies(all_domains=True, all_info=True) or []
@@ -1276,7 +1276,7 @@ return String(cfInput.value || '').trim().length;
 
                 if name == "sso" and value:
                     if log_callback:
-                        log_callback("[*] 已获取到 sso cookie")
+                        log_callback("[*] SSO cookie obtained")
                     return value
         except PageDisconnectedError:
             refresh_active_page()
@@ -1287,12 +1287,12 @@ return String(cfInput.value || '').trim().length;
                 now = time.time()
                 message = f"{exc.__class__.__name__}: {exc}"
                 if message != last_wait_exception_message or now - last_wait_exception_at >= 10:
-                    log_callback(f"[Debug] 等待 sso cookie 时出现异常，将继续等待: {message}")
+                    log_callback(f"[Debug] Error while waiting for SSO cookie; continuing to wait: {message}")
                     last_wait_exception_message = message
                     last_wait_exception_at = now
 
         sleep_with_cancel(1, cancel_callback)
 
     raise Exception(
-        f"等待超时：未获取到 sso cookie。已看到 cookies: {sorted(last_seen_names)}"
+        f"Timed out waiting for SSO cookie. Observed cookies: {sorted(last_seen_names)}"
     )

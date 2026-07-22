@@ -1,4 +1,4 @@
-"""验证 Cloudflare 临时邮箱 admin 创建和鉴权接口行为。"""
+"""Test Cloudflare temporary mail admin creation and authentication."""
 
 import unittest
 from unittest.mock import patch

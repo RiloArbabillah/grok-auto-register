@@ -1,4 +1,4 @@
-"""验证模块化改造后的配置、浏览器、邮箱和兼容性回归。"""
+"""Test configuration, browser, mail, and compatibility regressions."""
 
 import json
 import tempfile
