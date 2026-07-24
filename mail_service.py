@@ -858,38 +858,38 @@ def get_email_and_token(api_key=None):
             return cloudflare_create_temp_address(api_base)
         except Exception as primary_exc:
             # Preserve the Mail.tm-compatible fallback and both failure causes.
-            fallback_stage = "获取域名列表"
+            fallback_stage = "fetching the domain list"
             try:
                 key = api_key or get_cloudflare_api_key()
                 domains = cloudflare_get_domains(api_base, api_key=key)
                 if not domains:
-                    raise Exception("兼容接口未返回可用域名")
-                fallback_stage = "选择可用域名"
+                    raise Exception("The compatibility API returned no available domains")
+                fallback_stage = "selecting an available domain"
                 verified = [d for d in domains if d.get("isVerified")]
                 target = verified[0] if verified else domains[0]
                 domain = target.get("domain")
                 if not domain:
-                    raise Exception("Cloudflare 域名数据格式错误，缺少 domain 字段")
+                    raise Exception("Invalid Cloudflare domain data: missing domain field")
                 username = generate_username(10)
                 address = f"{username}@{domain}"
                 password = secrets.token_urlsafe(12)
-                fallback_stage = "创建兼容邮箱账户"
+                fallback_stage = "creating a compatibility mailbox account"
                 cloudflare_create_account(
                     api_base, address, password, api_key=key, expires_in=0
                 )
-                fallback_stage = "获取兼容邮箱 token"
+                fallback_stage = "obtaining a compatibility mailbox token"
                 token = cloudflare_get_token(
                     api_base, address, password, api_key=key
                 )
                 if not token:
-                    raise Exception("获取 Cloudflare 邮箱 token 失败")
+                    raise Exception("Failed to obtain a Cloudflare mailbox token")
                 return address, token
             except Exception as fallback_exc:
                 raise RuntimeError(
-                    "Cloudflare 创建邮箱失败；"
-                    f"主接口 {create_path}: "
-                    f"{primary_exc.__class__.__name__}: {primary_exc}；"
-                    f"兼容回退（{fallback_stage}）: "
+                    "Failed to create a Cloudflare mailbox; "
+                    f"primary endpoint {create_path}: "
+                    f"{primary_exc.__class__.__name__}: {primary_exc}; "
+                    f"compatibility fallback ({fallback_stage}): "
                     f"{fallback_exc.__class__.__name__}: {fallback_exc}"
                 ) from fallback_exc
     key = api_key or get_duckmail_api_key()

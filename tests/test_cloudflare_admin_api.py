@@ -177,7 +177,7 @@ class CloudflareAdminCreateTests(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("/admin/new_address", message)
         self.assertIn("primary 401", message)
-        self.assertIn("获取域名列表", message)
+        self.assertIn("fetching the domain list", message)
         self.assertIn("fallback 403", message)
 
 
