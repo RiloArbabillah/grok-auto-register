@@ -405,12 +405,12 @@ def cloudmail_get_oai_code(
                 continue
             code_value = str(msg.get("code", "") or "").strip()
             combined = normalize_mail_body(msg)
-            if code_value:
-                combined = f"verification code: {code_value}\n{combined}"
             subject = str(msg.get("subject", "") or "")
             if log_callback:
                 log_callback(f"[Debug] Cloud Mail message received: {subject}")
             code = extract_verification_code(combined, subject)
+            if not code and code_value:
+                code = extract_verification_code(f"verification code: {code_value}")
             if code:
                 if log_callback:
                     log_callback(f"[*] Extracted verification code from Cloud Mail message: {code}")
@@ -519,7 +519,7 @@ def extract_verification_code(text, subject=""):
         return match.group(1).upper()
     match = re.search(r"\b([A-Z0-9]{3}-[A-Z0-9]{3})\b", text)
     if match:
-        return match.group(1)
+        return match.group(1).upper()
     patterns = [
         r"verification\s+code[:\s]+(\d{4,8})",
         r"your\s+code[:\s]+(\d{4,8})",
@@ -850,30 +850,48 @@ def get_email_and_token(api_key=None):
         api_base = get_cloudflare_api_base()
         if not api_base:
             raise Exception("Cloudflare API base is not configured")
+        create_path = get_cloudflare_path(
+            "cloudflare_path_accounts", "/api/new_address"
+        )
         try:
             # cloudflare_temp_email-specific mode.
             return cloudflare_create_temp_address(api_base)
         except Exception as primary_exc:
-            # Fall back to the Mail.tm-compatible flow.
-            key = api_key or get_cloudflare_api_key()
-            domains = cloudflare_get_domains(api_base, api_key=key)
-            if not domains:
-                raise Exception(f"Failed to create Cloudflare mailbox: {primary_exc}")
-            verified = [d for d in domains if d.get("isVerified")]
-            target = verified[0] if verified else domains[0]
-            domain = target.get("domain")
-            if not domain:
-                raise Exception("Invalid Cloudflare domain data: missing domain field")
-            username = generate_username(10)
-            address = f"{username}@{domain}"
-            password = secrets.token_urlsafe(12)
-            cloudflare_create_account(
-                api_base, address, password, api_key=key, expires_in=0
-            )
-            token = cloudflare_get_token(api_base, address, password, api_key=key)
-            if not token:
-                raise Exception("Failed to obtain Cloudflare mailbox token")
-            return address, token
+            # Preserve the Mail.tm-compatible fallback and both failure causes.
+            fallback_stage = "获取域名列表"
+            try:
+                key = api_key or get_cloudflare_api_key()
+                domains = cloudflare_get_domains(api_base, api_key=key)
+                if not domains:
+                    raise Exception("兼容接口未返回可用域名")
+                fallback_stage = "选择可用域名"
+                verified = [d for d in domains if d.get("isVerified")]
+                target = verified[0] if verified else domains[0]
+                domain = target.get("domain")
+                if not domain:
+                    raise Exception("Cloudflare 域名数据格式错误，缺少 domain 字段")
+                username = generate_username(10)
+                address = f"{username}@{domain}"
+                password = secrets.token_urlsafe(12)
+                fallback_stage = "创建兼容邮箱账户"
+                cloudflare_create_account(
+                    api_base, address, password, api_key=key, expires_in=0
+                )
+                fallback_stage = "获取兼容邮箱 token"
+                token = cloudflare_get_token(
+                    api_base, address, password, api_key=key
+                )
+                if not token:
+                    raise Exception("获取 Cloudflare 邮箱 token 失败")
+                return address, token
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    "Cloudflare 创建邮箱失败；"
+                    f"主接口 {create_path}: "
+                    f"{primary_exc.__class__.__name__}: {primary_exc}；"
+                    f"兼容回退（{fallback_stage}）: "
+                    f"{fallback_exc.__class__.__name__}: {fallback_exc}"
+                ) from fallback_exc
     key = api_key or get_duckmail_api_key()
     domain = pick_domain(api_key=key)
     username = generate_username(10)
